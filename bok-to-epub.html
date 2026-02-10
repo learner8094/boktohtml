@@ -1,0 +1,1444 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Shamela .bok إلى EPUB (قديم)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&family=IBM+Plex+Sans+Arabic:wght@300;400;600&display=swap"
+    rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #f6f0e6;
+      --paper: #fff7ee;
+      --ink: #1a1a1a;
+      --muted: #5b5b5b;
+      --line: #e6d8c8;
+      --accent: #b1321e;
+      --accent2: #0f766e;
+      --shadow: 0 18px 55px rgba(0, 0, 0, .12);
+      --radius: 18px;
+    }
+
+    * {
+      box-sizing: border-box
+    }
+
+    html,
+    body {
+      height: 100%
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(1200px 900px at 18% -10%, rgba(177, 50, 30, .10), transparent 60%),
+        radial-gradient(900px 700px at 95% 8%, rgba(15, 118, 110, .10), transparent 55%),
+        repeating-linear-gradient(135deg, rgba(0, 0, 0, .03) 0 1px, transparent 1px 10px),
+        var(--bg);
+      font-family: 'IBM Plex Sans Arabic', ui-sans-serif, system-ui, -apple-system, Segoe UI, sans-serif;
+      line-height: 1.55;
+    }
+
+    a {
+      color: inherit
+    }
+
+    code,
+    kbd,
+    pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', monospace
+    }
+
+    .wrap {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 28px 18px 70px
+    }
+
+    header {
+      display: flex;
+      gap: 16px;
+      align-items: flex-end;
+      justify-content: space-between;
+      flex-wrap: wrap
+    }
+
+    .title {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    h1 {
+      margin: 0;
+      font-family: Amiri, serif;
+      font-weight: 700;
+      font-size: 34px;
+      letter-spacing: .2px;
+    }
+
+    .sub {
+      color: var(--muted);
+      width: 100%;
+      max-width: none
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, .55);
+      border-radius: 999px;
+      box-shadow: 0 8px 22px rgba(0, 0, 0, .06);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1.1fr .9fr;
+      gap: 16px;
+      margin-top: 18px
+    }
+
+    @media (max-width: 980px) {
+      .grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255, 255, 255, .92), rgba(255, 255, 255, .72));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .card .head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      background: rgba(255, 247, 238, .7);
+    }
+
+    .card .body {
+      padding: 16px
+    }
+
+    .h {
+      font-weight: 600
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 13px
+    }
+
+    .row {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center
+    }
+
+    .row>* {
+      flex: 1
+    }
+
+    .row .grow {
+      flex: 2
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted)
+    }
+
+    label.check {
+      flex-direction: row;
+      align-items: center;
+      gap: 10px
+    }
+
+    label.check input {
+      width: auto;
+      margin: 0
+    }
+
+    input[type="file"] {
+      padding: 10px;
+      border: 1px dashed var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .5)
+    }
+
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      font: inherit;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 12px;
+      background: rgba(255, 255, 255, .7);
+      color: var(--ink);
+      outline: none;
+    }
+
+    textarea {
+      min-height: 120px;
+      resize: vertical
+    }
+
+    .btns {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap
+    }
+
+    button {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 10px 14px;
+      background: rgba(255, 255, 255, .8);
+      font: inherit;
+      cursor: pointer;
+    }
+
+    button.primary {
+      border-color: rgba(177, 50, 30, .35);
+      background: linear-gradient(180deg, rgba(177, 50, 30, .18), rgba(177, 50, 30, .09));
+    }
+
+    button.good {
+      border-color: rgba(15, 118, 110, .35);
+      background: linear-gradient(180deg, rgba(15, 118, 110, .18), rgba(15, 118, 110, .09));
+    }
+
+    button:disabled {
+      opacity: .55;
+      cursor: not-allowed
+    }
+
+    .kv {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 10px 12px
+    }
+
+    .kv div {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .55)
+    }
+
+    .kv .k {
+      color: var(--muted)
+    }
+
+    .kv .v {
+      font-family: Amiri, serif;
+      font-size: 16px
+    }
+
+    pre.log {
+      margin: 0;
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: rgba(20, 20, 20, .92);
+      color: #f2f2f2;
+      overflow: auto;
+      max-height: 340px;
+      direction: ltr;
+      text-align: left;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+
+    .warn {
+      border: 1px solid rgba(177, 50, 30, .35);
+      background: rgba(177, 50, 30, .08);
+      border-radius: 16px;
+      padding: 12px 14px;
+      color: #6f1c10;
+      font-size: 13px;
+    }
+
+    .ok {
+      border: 1px solid rgba(15, 118, 110, .35);
+      background: rgba(15, 118, 110, .08);
+      border-radius: 16px;
+      padding: 12px 14px;
+      color: #064e3b;
+      font-size: 13px;
+    }
+
+    .small {
+      font-size: 12px;
+      color: var(--muted)
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <header>
+      <div class="title">
+        <h1>أداة تحويل كتب الشاملة القديمة (.bok) إلى EPUB</h1>
+        <div class="sub">
+          تعمل بالكامل داخل المتصفح دون رفع ملفات. تدعم اختيار جداول/أعمدة الشاملة يدويًا إذا فشلت التخمينات.
+        </div>
+      </div>
+    </header>
+
+    <div class="grid">
+      <section class="card">
+        <div class="head">
+          <div>
+            <div class="h">الملف والإعدادات</div>
+            <div class="hint">اختر ملف .bok ثم راجع الجداول/الأعمدة إن لزم</div>
+          </div>
+          <div class="btns">
+            <button id="analyze_btn" class="primary" disabled>تحليل</button>
+            <button id="convert_btn" class="good" disabled>تحويل وتنزيل EPUB</button>
+          </div>
+        </div>
+        <div class="body">
+          <div class="row">
+            <label class="grow">
+              ملف .bok
+              <input id="bok_file" type="file" accept=".bok,.mdb,.accdb" />
+            </label>
+            <label>
+              كلمة مرور (اختياري)
+              <input id="db_password" type="text" autocomplete="off" />
+            </label>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <div class="row">
+            <label>
+              جدول المحتوى
+              <select id="content_table"></select>
+            </label>
+            <label>
+              عمود النص
+              <select id="content_text_col"></select>
+            </label>
+            <label>
+              عمود المعرّف (اختياري)
+              <select id="content_id_col"></select>
+            </label>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="row">
+            <label>
+              عمود الصفحة (اختياري)
+              <select id="content_page_col"></select>
+            </label>
+            <label>
+              عمود الجزء (اختياري)
+              <select id="content_part_col"></select>
+            </label>
+            <label>
+              حجم الدُفعة (قراءة)
+              <input id="chunk_size" type="number" value="2000" min="200" max="20000" step="100" />
+            </label>
+          </div>
+
+          <div style="height:8px"></div>
+
+          <div class="row">
+            <label class="check grow">
+              <input id="split_numbered" type="checkbox" />
+              <span>تقسيم المحتوى حسب الترقيم داخل النص (1 - ...). مفيد إذا كان السطر يحتوي عدة مواد.</span>
+            </label>
+          </div>
+
+          <div style="height:14px"></div>
+
+          <div class="row">
+            <label>
+              جدول الفهرس (اختياري)
+              <select id="toc_table"></select>
+            </label>
+            <label>
+              عمود عنوان الفهرس
+              <select id="toc_text_col"></select>
+            </label>
+            <label>
+              عمود بداية (صفحة/معرّف)
+              <select id="toc_start_col"></select>
+            </label>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="row">
+            <label>
+              عمود المستوى (اختياري)
+              <select id="toc_level_col"></select>
+            </label>
+            <label>
+              عنوان الكتاب (تجاوز)
+              <input id="override_title" type="text" placeholder="اتركه فارغًا لاستخدام البيانات/اسم الملف" />
+            </label>
+            <label>
+              المؤلف (تجاوز)
+              <input id="override_author" type="text" placeholder="اختياري" />
+            </label>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <label>
+            ملاحظات/سجل العمل
+            <pre id="log" class="log"></pre>
+          </label>
+        </div>
+      </section>
+
+      <aside class="card">
+        <div class="head">
+          <div>
+            <div class="h">ملخص</div>
+            <div class="hint">يحدّث بعد التحليل</div>
+          </div>
+          <div class="small" id="status">جاهز</div>
+        </div>
+        <div class="body">
+          <div id="msg" class="warn" style="display:none"></div>
+          <div id="ok" class="ok" style="display:none"></div>
+
+          <div style="height:12px"></div>
+
+          <div class="kv">
+            <div class="k">الكتاب</div>
+            <div class="v" id="sum_title">-</div>
+            <div class="k">المؤلف</div>
+            <div class="v" id="sum_author">-</div>
+            <div class="k">الجداول</div>
+            <div class="v" id="sum_tables">-</div>
+            <div class="k">الصفحات</div>
+            <div class="v" id="sum_pages">-</div>
+          </div>
+
+          <div style="height:12px"></div>
+
+          <label class="small">
+            قائمة الجداول
+            <textarea id="tables_dump" readonly></textarea>
+          </label>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <script type="module">
+    const $ = sel => document.querySelector(sel)
+
+    const els = {
+      bok_file: $('#bok_file'),
+      db_password: $('#db_password'),
+      analyze_btn: $('#analyze_btn'),
+      convert_btn: $('#convert_btn'),
+      content_table: $('#content_table'),
+      content_text_col: $('#content_text_col'),
+      content_id_col: $('#content_id_col'),
+      content_page_col: $('#content_page_col'),
+      content_part_col: $('#content_part_col'),
+      toc_table: $('#toc_table'),
+      toc_text_col: $('#toc_text_col'),
+      toc_start_col: $('#toc_start_col'),
+      toc_level_col: $('#toc_level_col'),
+      override_title: $('#override_title'),
+      override_author: $('#override_author'),
+      chunk_size: $('#chunk_size'),
+      split_numbered: $('#split_numbered'),
+      log: $('#log'),
+      status: $('#status'),
+      msg: $('#msg'),
+      ok: $('#ok'),
+      sum_title: $('#sum_title'),
+      sum_author: $('#sum_author'),
+      sum_tables: $('#sum_tables'),
+      sum_pages: $('#sum_pages'),
+      tables_dump: $('#tables_dump'),
+    }
+
+    const log_lines = []
+    const log = (...parts) => {
+      const line = parts.map(p => (typeof p === 'string' ? p : JSON.stringify(p))).join(' ')
+      log_lines.push(line)
+      if (log_lines.length > 600) log_lines.splice(0, log_lines.length - 600)
+      els.log.textContent = log_lines.join('\n')
+      els.log.scrollTop = els.log.scrollHeight
+    }
+
+    const set_status = value => (els.status.textContent = value)
+    const show_warn = text => {
+      els.ok.style.display = 'none'
+      els.msg.style.display = 'block'
+      els.msg.textContent = text
+    }
+    const show_ok = text => {
+      els.msg.style.display = 'none'
+      els.ok.style.display = 'block'
+      els.ok.textContent = text
+    }
+
+    const escape_xml = value =>
+      String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;')
+
+    const sanitize_filename = value =>
+      String(value)
+        .replace(/[/:*?"<>|]+/g, '_')
+        .replace(/\s+/g, ' ')
+        .trim()
+
+    const lower = v => String(v ?? '').toLowerCase()
+    const looks_like_html = text => /<\/?(p|br|div|span|h[1-6]|font)\b/i.test(text)
+
+    const digits_to_ascii = value =>
+      String(value)
+        .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660))
+        .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06f0))
+
+    const CP1256_TABLE = [
+      0x20AC, 0x067E, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+      0x02C6, 0x2030, 0x0679, 0x2039, 0x0152, 0x0686, 0x0698, 0x0688,
+      0x06AF, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+      0x06A9, 0x2122, 0x0691, 0x203A, 0x0153, 0x200C, 0x200D, 0x06BA,
+      0x00A0, 0x060C, 0x00A2, 0x00A3, 0x00A4, 0x00A5, 0x00A6, 0x00A7,
+      0x00A8, 0x00A9, 0x06BE, 0x00AB, 0x00AC, 0x00AD, 0x00AE, 0x00AF,
+      0x00B0, 0x00B1, 0x00B2, 0x00B3, 0x00B4, 0x00B5, 0x00B6, 0x00B7,
+      0x00B8, 0x00B9, 0x061B, 0x00BB, 0x00BC, 0x00BD, 0x00BE, 0x061F,
+      0x06C1, 0x0621, 0x0622, 0x0623, 0x0624, 0x0625, 0x0626, 0x0627,
+      0x0628, 0x0629, 0x062A, 0x062B, 0x062C, 0x062D, 0x062E, 0x062F,
+      0x0630, 0x0631, 0x0632, 0x0633, 0x0634, 0x0635, 0x0636, 0x00D7,
+      0x0637, 0x0638, 0x0639, 0x063A, 0x0640, 0x0641, 0x0642, 0x0643,
+      0x00E0, 0x0644, 0x00E2, 0x0645, 0x0646, 0x0647, 0x0648, 0x00E7,
+      0x00E8, 0x00E9, 0x00EA, 0x00EB, 0x0649, 0x064A, 0x00EE, 0x00EF,
+      0x064B, 0x064C, 0x064D, 0x064E, 0x00F4, 0x064F, 0x0650, 0x00F7,
+      0x0651, 0x00F9, 0x0652, 0x00FB, 0x00FC, 0x200E, 0x200F, 0x06D2,
+    ]
+
+    const decode_cp1256 = u8 => {
+      let out = ''
+      for (let i = 0; i < u8.length; i += 1) {
+        const b = u8[i]
+        if (b < 0x80) out += String.fromCharCode(b)
+        else out += String.fromCharCode(CP1256_TABLE[b - 0x80] ?? 0xfffd)
+      }
+      return out
+    }
+
+    const decode_windows_1256 = u8 => {
+      try {
+        return new TextDecoder('windows-1256').decode(u8)
+      } catch (e) {
+        return decode_cp1256(u8)
+      }
+    }
+
+    const fix_arabic_mojibake = value => {
+      if (typeof value !== 'string') return value
+      if (/[\u0600-\u06FF]/.test(value)) return value
+      const hi = (value.match(/[\u00C0-\u00FF]/g) ?? []).length
+      if (hi < Math.max(4, Math.floor(value.length * 0.2))) return value
+      const bytes = new Uint8Array(Array.from(value, ch => ch.charCodeAt(0) & 0xff))
+      const decoded = decode_windows_1256(bytes)
+      if (/[\u0600-\u06FF]/.test(decoded)) return decoded
+      return value
+    }
+
+    const decode_bytes = bytes => {
+      const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+      let zero_count = 0
+      for (let i = 1; i < u8.length; i += 2) if (u8[i] === 0) zero_count += 1
+      const maybe_utf16 = u8.length >= 16 && zero_count / Math.max(1, u8.length / 2) > 0.25
+
+      const try_decode = encoding => {
+        try {
+          return new TextDecoder(encoding).decode(u8)
+        } catch (e) {
+          return null
+        }
+      }
+
+      return (
+        (maybe_utf16 ? try_decode('utf-16le') : null) ??
+        decode_windows_1256(u8) ??
+        try_decode('utf-8') ??
+        ''
+      )
+    }
+
+    const decode_value = value => {
+      if (typeof value === 'string') return fix_arabic_mojibake(value)
+      if (value == null) return ''
+      if (value instanceof ArrayBuffer) return decode_bytes(value)
+      if (value instanceof Uint8Array) return decode_bytes(value)
+      if (globalThis.Buffer && globalThis.Buffer.isBuffer?.(value)) return decode_bytes(value)
+      return String(value)
+    }
+
+    const split_plain_text = raw => {
+      const text = String(raw ?? '')
+        .replace(/\u0000/g, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n')
+        .replace(/بسم الله الرحمن الرحيم\s+(?=سورة|تفسير\s+سورة)/g, 'بسم الله الرحمن الرحيم\n')
+        .replace(/(?<!^)(\s+)(?=تفسير\s+سورة\s+)/g, '\n')
+        .trim()
+      if (!text) return []
+
+      const lines = text.split(/\n+/).map(l => l.trim()).filter(Boolean)
+      const out = []
+      const numbered_pat = /(?=(?:^|[\s\u00A0])(?:[0-9]{1,4}|[\u0660-\u0669]{1,4}|[\u06F0-\u06F9]{1,4})\s*[-–—]\s+)/g
+
+      for (const line of lines) {
+        if (line.length < 220) {
+          out.push(line)
+          continue
+        }
+        const parts = line.split(numbered_pat).map(p => p.trim()).filter(Boolean)
+        if (parts.length >= 2) out.push(...parts)
+        else out.push(line)
+      }
+
+      return out
+    }
+
+    const to_html_paragraphs = text => {
+      const raw = decode_value(text).replace(/\u0000/g, '').trim()
+      if (!raw) return []
+      if (looks_like_html(raw)) return [raw]
+      const parts = split_plain_text(raw)
+      if (!parts.length) return [`<p>${escape_xml(raw)}</p>`]
+      return parts.map(p => `<p>${escape_xml(p)}</p>`)
+    }
+
+    const is_heading_text = text => /^(?:تفسير\s+سورة|سورة)\s+/.test(text)
+
+    const download_blob = (blob, filename) => {
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+    }
+
+    const get_uuid = () => globalThis.crypto?.randomUUID?.() ?? `uuid_${Math.random().toString(16).slice(2)}`
+
+    let MDBReader
+    let JSZip
+    let mdb
+    let table_names = []
+    let table_meta = new Map()
+
+    const load_libs = async () => {
+      if (MDBReader && JSZip) return
+      set_status('تحميل المكتبات...')
+      log('Loading libraries from CDNs...')
+      const { Buffer } = await import('https://cdn.jsdelivr.net/npm/buffer@6.0.3/+esm')
+      globalThis.Buffer = Buffer
+      const jszip_mod = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm')
+      JSZip = jszip_mod.default
+      const mdb_mod = await import('https://esm.sh/mdb-reader@3.1.0?bundle')
+      MDBReader = mdb_mod.default
+      log('OK: libs loaded')
+    }
+
+    const set_select_options = (select, options, { placeholder = null } = {}) => {
+      select.innerHTML = ''
+      if (placeholder != null) {
+        const opt = document.createElement('option')
+        opt.value = ''
+        opt.textContent = placeholder
+        select.appendChild(opt)
+      }
+      options.forEach(value => {
+        const opt = document.createElement('option')
+        opt.value = value
+        opt.textContent = value
+        select.appendChild(opt)
+      })
+    }
+
+    const pick_best_text_column = (rows, column_names) => {
+      const scores = new Map()
+      column_names.forEach(col => scores.set(col, 0))
+      const sample = rows.slice(0, 60)
+      sample.forEach(row => {
+        column_names.forEach(col => {
+          const v = row?.[col]
+          if (typeof v !== 'string') return
+          const len = v.trim().length
+          if (len < 10) return
+          scores.set(col, (scores.get(col) ?? 0) + Math.min(5000, len))
+        })
+      })
+      const sorted = [...scores.entries()].sort((a, b) => b[1] - a[1])
+      return sorted[0]?.[0] ?? column_names[0] ?? ''
+    }
+
+    const pick_numeric_column = (rows, column_names) => {
+      const cols = column_names.filter(c => rows.some(r => typeof r?.[c] === 'number'))
+      if (!cols.length) return ''
+      const sample = rows.slice(0, 120)
+      const score_col = col => {
+        let last = null
+        let inc = 0
+        let uniq = 0
+        const seen = new Set()
+        for (const r of sample) {
+          const v = r?.[col]
+          if (typeof v !== 'number') continue
+          if (!seen.has(v)) uniq += 1
+          seen.add(v)
+          if (last != null && v >= last) inc += 1
+          last = v
+        }
+        return inc * 2 + uniq
+      }
+      return cols.map(c => [c, score_col(c)]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? cols[0]
+    }
+
+    const guess_tables = () => {
+      const names = table_names
+      const lc = name => lower(name)
+      const has = n => names.find(t => lc(t) === n)
+      const looks_like_content_table = name => /^[bt]\d+$/i.test(name)
+      const looks_like_toc_table = name => /^t\d+$/i.test(name)
+
+      const content_pref = ['page', 'nass']
+      const toc_pref = ['tit', 'title']
+
+      const score_content_table = name => {
+        const meta = table_meta.get(name)
+        const cols = meta?.column_names ?? []
+        const cols_lc = new Set(cols.map(c => lower(c)))
+        const has_nass = cols_lc.has('nass') || cols_lc.has('text')
+        const has_page = cols_lc.has('page') || [...cols_lc].some(c => c.includes('page'))
+        const has_id = cols_lc.has('id')
+        const row_count = meta?.row_count ?? 0
+
+        let score = row_count
+        if (has_nass) score += 20000
+        if (has_page) score += 5000
+        if (has_id) score += 800
+        if (looks_like_content_table(name)) score += 1500
+        if (content_pref.includes(lc(name))) score += 4000
+        return score
+      }
+
+      const content_guess =
+        names.find(t => content_pref.includes(lc(t))) ??
+        names.slice().sort((a, b) => score_content_table(b) - score_content_table(a))[0] ??
+        ''
+
+      const toc_guess =
+        names.find(t => toc_pref.includes(lc(t))) ??
+        has('tit') ??
+        has('title') ??
+        names.filter(looks_like_toc_table).sort((a, b) => (table_meta.get(b)?.row_count ?? 0) - (table_meta.get(a)?.row_count ?? 0))[0] ??
+        ''
+
+      const top_candidates = names
+        .slice()
+        .sort((a, b) => score_content_table(b) - score_content_table(a))
+        .slice(0, 6)
+        .map(n => `${n} (${table_meta.get(n)?.row_count ?? 0})`)
+        .join(', ')
+      log(`Content candidates: ${top_candidates}`)
+
+      return { content_guess, toc_guess }
+    }
+
+    const read_table_preview = (name, row_limit = 80) => {
+      try {
+        const table = mdb.getTable(name)
+        return table.getData({ rowLimit: row_limit })
+      } catch (e) {
+        log(`ERR: getTable(${name}) failed`, String(e))
+        return []
+      }
+    }
+
+    const build_table_meta = () => {
+      table_meta = new Map()
+      table_names.forEach(name => {
+        let row_count = 0
+        let column_names = []
+        try {
+          const t = mdb.getTable(name)
+          row_count = t.rowCount
+          column_names = t.getColumnNames()
+        } catch (e) { }
+        table_meta.set(name, { row_count, column_names })
+      })
+    }
+
+    const update_content_columns_ui = () => {
+      const name = els.content_table.value
+      if (!name) return
+      const meta = table_meta.get(name) ?? { column_names: [] }
+      const preview = read_table_preview(name, 80)
+      const col_names = meta.column_names ?? []
+
+      const text_guess = pick_best_text_column(preview, col_names.filter(c => preview.some(r => typeof r?.[c] === 'string')))
+      const id_guess = pick_numeric_column(preview, col_names)
+      let page_guess = col_names.find(c => lower(c).trim() === 'page') ?? col_names.find(c => lower(c).includes('page')) ?? ''
+      const part_guess = col_names.find(c => lower(c).trim() === 'part') ?? col_names.find(c => lower(c).includes('part')) ?? ''
+      const hno_guess = col_names.find(c => lower(c).trim() === 'hno')
+
+      const text_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'string'))
+      const num_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'number'))
+      const num_like_cols = col_names.filter(c =>
+        preview.some(r => {
+          const v = r?.[c]
+          if (typeof v === 'number') return true
+          if (typeof v === 'string') return /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)
+          return false
+        }),
+      )
+
+      if (hno_guess && num_like_cols.includes(hno_guess)) {
+        const values = preview
+          .map(r => r?.[hno_guess])
+          .map(v => (typeof v === 'number' ? v : typeof v === 'string' ? Number(digits_to_ascii(v)) : null))
+          .filter(v => typeof v === 'number')
+        const max = values.length ? Math.max(...values) : 0
+        const page_values = page_guess
+          ? preview
+            .map(r => r?.[page_guess])
+            .map(v => (typeof v === 'number' ? v : typeof v === 'string' ? Number(digits_to_ascii(v)) : null))
+            .filter(v => typeof v === 'number')
+          : []
+        const page_max = page_values.length ? Math.max(...page_values) : 0
+
+        // Prefer hno when it looks like the real printed page numbers (typically larger than the simple page counter).
+        if (max > Math.max(50, page_max + 50)) page_guess = hno_guess
+      }
+
+      set_select_options(els.content_text_col, text_cols)
+      set_select_options(els.content_id_col, [''].concat(num_like_cols), { placeholder: 'بدون' })
+      set_select_options(els.content_page_col, [''].concat(num_like_cols), { placeholder: 'بدون' })
+      set_select_options(els.content_part_col, [''].concat(num_like_cols), { placeholder: 'بدون' })
+
+      if (text_guess) els.content_text_col.value = text_guess
+      if (id_guess) els.content_id_col.value = id_guess
+      if (page_guess && num_like_cols.includes(page_guess)) els.content_page_col.value = page_guess
+      if (part_guess && num_like_cols.includes(part_guess)) els.content_part_col.value = part_guess
+    }
+
+    const update_toc_columns_ui = () => {
+      const name = els.toc_table.value
+      if (!name) {
+        set_select_options(els.toc_text_col, [])
+        set_select_options(els.toc_start_col, [])
+        set_select_options(els.toc_level_col, [])
+        return
+      }
+      const meta = table_meta.get(name) ?? { column_names: [] }
+      const preview = read_table_preview(name, 120)
+      const col_names = meta.column_names ?? []
+
+      const text_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'string'))
+      const num_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'number'))
+      const num_like_cols = col_names.filter(c =>
+        preview.some(r => {
+          const v = r?.[c]
+          if (typeof v === 'number') return true
+          if (typeof v === 'string') return /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)
+          return false
+        }),
+      )
+
+      const text_guess = pick_best_text_column(preview, text_cols)
+      const start_guess =
+        col_names.find(c => ['page', 'p', 'start', 'id'].includes(lower(c).trim())) ??
+        col_names.find(c => lower(c).includes('page')) ??
+        pick_numeric_column(preview, col_names)
+      const level_guess = col_names.find(c => ['lvl', 'level', 'lev'].includes(lower(c).trim())) ?? ''
+
+      set_select_options(els.toc_text_col, text_cols)
+      set_select_options(els.toc_start_col, num_like_cols)
+      set_select_options(els.toc_level_col, [''].concat(num_like_cols), { placeholder: 'بدون' })
+
+      if (text_guess) els.toc_text_col.value = text_guess
+      if (start_guess && num_like_cols.includes(start_guess)) els.toc_start_col.value = start_guess
+      if (level_guess && num_like_cols.includes(level_guess)) els.toc_level_col.value = level_guess
+    }
+
+    const get_meta_guess = () => {
+      const main = table_names.find(t => ['main', 'Main'].includes(t))
+      return main ?? table_names.find(t => lower(t) === 'main') ?? ''
+    }
+
+    const extract_title_author = () => {
+      const override_title = els.override_title.value.trim()
+      const override_author = els.override_author.value.trim()
+
+      let title = override_title || ''
+      let author = override_author || ''
+
+      const meta_table = get_meta_guess()
+      if (meta_table) {
+        const rows = read_table_preview(meta_table, 5)
+        const row = rows[0] ?? {}
+        const keys = Object.keys(row)
+        const pick = (candidates, fallback = '') => {
+          const key =
+            keys.find(k => candidates.includes(lower(k))) ??
+            keys.find(k => candidates.some(c => lower(k).includes(c))) ??
+            ''
+          return key ? decode_value(row[key]).trim() : fallback
+        }
+
+        if (!title) title = pick(['title', 'book', 'bk', 'name'], '')
+        if (!author) author = pick(['author', 'auth'], '')
+      }
+
+      if (!title) title = els.bok_file.files?.[0]?.name?.replace(/\.(bok|mdb|accdb)$/i, '') ?? 'كتاب'
+      return { title: title.trim(), author: author.trim() }
+    }
+
+    const sanitize_html_for_xhtml = html => {
+      const pat = /<(br|hr|img|input|meta|link|area|base|col|embed|source|track|wbr)(\s[^>]*)?\/?>/gi
+      return html.replace(pat, '<$1$2 />')
+    }
+
+    const BASE_CSS = `
+*{direction: rtl}
+body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
+.text-center,h1,h2,h3{text-align:center}
+`.trim()
+
+    const render_page = (page, title) => `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escape_xml(title)}</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    ${page.text_html}
+  </body>
+</html>
+`
+
+    const render_nav_items = (toc, page_map) => {
+      const render_item = item => {
+        if (Array.isArray(item)) {
+          const [entry, children] = item
+          const href = `${page_map.get(entry.page)}${entry.anchor ? `#${entry.anchor}` : ''}`
+          return `<li><a href="${href}">${escape_xml(entry.text)}</a>${render_list(children)}</li>`
+        }
+        const href = `${page_map.get(item.page)}${item.anchor ? `#${item.anchor}` : ''}`
+        return `<li><a href="${href}">${escape_xml(item.text)}</a></li>`
+      }
+      const render_list = items => items?.length ? `<ol>${items.map(render_item).join('')}</ol>` : ''
+      return render_list(toc)
+    }
+
+    const render_ncx_items = (toc, page_map) => {
+      let nav_index = 0
+      const render_item = item => {
+        const id = `nav_${nav_index++}`
+        if (Array.isArray(item)) {
+          const [entry, children] = item
+          const href = `${page_map.get(entry.page)}${entry.anchor ? `#${entry.anchor}` : ''}`
+          return `<navPoint id="${id}"><navLabel><text>${escape_xml(entry.text)}</text></navLabel><content src="${href}"/>${children.map(render_item).join('')}</navPoint>`
+        }
+        const href = `${page_map.get(item.page)}${item.anchor ? `#${item.anchor}` : ''}`
+        return `<navPoint id="${id}"><navLabel><text>${escape_xml(item.text)}</text></navLabel><content src="${href}"/></navPoint>`
+      }
+      return toc.map(render_item).join('')
+    }
+
+    const build_epub = async (info, pages) => {
+      const zip = new JSZip()
+      const title = info.title || `الشاملة ${info.id ?? 0}`
+      const author = info.author || ''
+      const identifier = `urn:shamela_bok:${info.id ?? 0}`
+      const filename = sanitize_filename(`${title}${author ? ` - ${author}` : ''}.epub`)
+
+      zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' })
+
+      zip.folder('META-INF')?.file(
+        'container.xml',
+        `<?xml version="1.0" encoding="utf-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml" />
+  </rootfiles>
+</container>
+`
+      )
+
+      const sorted_pages = [...pages].sort((a, b) => a.page_number - b.page_number)
+      const zfill_length = String(sorted_pages[sorted_pages.length - 1]?.page_number ?? 0).length + 1
+      zip.folder('OEBPS')?.file('styles.css', BASE_CSS)
+
+      const text_folder = zip.folder('OEBPS')?.folder('text')
+      const page_entries = sorted_pages.map(page => {
+        const part = typeof page.part === 'number' ? page.part : null
+        const prefix = part != null ? `page_${part}_` : 'page_'
+        const file_name = `${prefix}${String(page.page_number).padStart(zfill_length, '0')}.xhtml`
+        return { page, file_name }
+      })
+
+      const page_map = new Map()
+      page_entries.forEach(entry => page_map.set(entry.page.page_number, `text/${entry.file_name}`))
+
+      page_entries.forEach(entry => {
+        const page_title = title
+        text_folder?.file(entry.file_name, render_page(entry.page, page_title))
+      })
+
+      const info_body = sanitize_html_for_xhtml(info.about ?? '')
+      zip.folder('OEBPS')?.file(
+        'info.xhtml',
+        `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>بطاقة الكتاب</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    ${info_body}
+  </body>
+</html>
+`
+      )
+
+      const toc_source = info.toc?.length ? info.toc : sorted_pages.map(p => ({ page: p.page_number, text: `صفحة ${p.page}` }))
+      const toc_html = render_nav_items(toc_source, page_map)
+      const info_link = '<li><a href="info.xhtml">بطاقة الكتاب</a></li>'
+      const nav_link = '<li><a href="nav.xhtml">فهرس الموضوعات</a></li>'
+      const nav_items = toc_html.startsWith('<ol>') ? toc_html.replace('<ol>', `<ol>${info_link}${nav_link}`) : `<ol>${info_link}${nav_link}</ol>`
+
+      zip.folder('OEBPS')?.file(
+        'nav.xhtml',
+        `<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <title>${escape_xml(title)}</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <nav epub:type="toc" id="toc">
+      <h1>فهرس الموضوعات</h1>
+      ${nav_items}
+    </nav>
+  </body>
+  </html>
+`
+      )
+
+      const ncx_id = get_uuid()
+      const ncx_items = render_ncx_items(toc_source, page_map)
+      zip.folder('OEBPS')?.file(
+        'toc.ncx',
+        `<?xml version="1.0" encoding="utf-8"?>
+<ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1">
+  <head>
+    <meta content="${escape_xml(ncx_id)}" name="dtb:uid"/>
+    <meta content="0" name="dtb:depth"/>
+    <meta content="0" name="dtb:totalPageCount"/>
+    <meta content="0" name="dtb:maxPageNumber"/>
+  </head>
+  <docTitle>
+    <text>${escape_xml(title)}</text>
+  </docTitle>
+  <navMap>
+    <navPoint id="info">
+      <navLabel><text>بطاقة الكتاب</text></navLabel>
+      <content src="info.xhtml"/>
+    </navPoint>
+    <navPoint id="nav">
+      <navLabel><text>فهرس الموضوعات</text></navLabel>
+      <content src="nav.xhtml"/>
+    </navPoint>
+    ${ncx_items}
+  </navMap>
+</ncx>
+`
+      )
+
+      const manifest_items = page_entries
+        .map(entry => `<item id="p${entry.page.page_number}" href="text/${entry.file_name}" media-type="application/xhtml+xml" />`)
+        .join('')
+      const spine_items = page_entries.map(entry => `<itemref idref="p${entry.page.page_number}" />`).join('')
+
+      zip.folder('OEBPS')?.file(
+        'content.opf',
+        `<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="bookid" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="bookid">${escape_xml(identifier)}</dc:identifier>
+    <dc:title>${escape_xml(title)}</dc:title>
+    ${author ? `<dc:creator>${escape_xml(author)}</dc:creator>` : ''}
+    <dc:publisher>Shamela (.bok)</dc:publisher>
+    <dc:language>ar</dc:language>
+    <meta property="dcterms:modified">${new Date().toISOString()}</meta>
+  </metadata>
+  <manifest>
+    <item id="info" href="info.xhtml" media-type="application/xhtml+xml" />
+    <item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav" />
+    <item id="ncx" href="toc.ncx" media-type="application/x-dtbncx+xml" />
+    <item id="css" href="styles.css" media-type="text/css" />
+    ${manifest_items}
+  </manifest>
+  <spine toc="ncx" page-progression-direction="rtl">
+    <itemref idref="info" />
+    <itemref idref="nav" />
+    ${spine_items}
+  </spine>
+</package>
+`
+      )
+
+      const blob = await zip.generateAsync({
+        type: 'blob',
+        mimeType: 'application/epub+zip',
+        compression: 'DEFLATE',
+        compressionOptions: { level: 9 },
+      })
+
+      return { blob, filename }
+    }
+
+    const analyze_file = async file => {
+      await load_libs()
+      set_status('قراءة الملف...')
+      log(`Reading: ${file.name} (${Math.round(file.size / 1024)} KiB)`)
+      const buf = Buffer.from(await file.arrayBuffer())
+      const password = els.db_password.value.trim() || undefined
+      set_status('فتح قاعدة البيانات...')
+      mdb = new MDBReader(buf, password ? { password } : undefined)
+      table_names = mdb.getTableNames({ normalTables: true, systemTables: false, linkedTables: false })
+      build_table_meta()
+
+      els.tables_dump.value = table_names
+        .map(name => `${name} (${table_meta.get(name)?.row_count ?? 0})`)
+        .join('\n')
+      els.sum_tables.textContent = String(table_names.length)
+
+      set_select_options(els.content_table, table_names)
+      set_select_options(els.toc_table, table_names, { placeholder: 'بدون' })
+
+      const { content_guess, toc_guess } = guess_tables()
+      if (content_guess) els.content_table.value = content_guess
+      if (toc_guess) els.toc_table.value = toc_guess
+
+      update_content_columns_ui()
+      update_toc_columns_ui()
+
+      const ct = els.content_table.value
+      const ct_meta = table_meta.get(ct)
+      if (ct) {
+        log(`Selected content table: ${ct} rows=${ct_meta?.row_count ?? '?'} cols=${(ct_meta?.column_names ?? []).join(', ')}`)
+        const sample = read_table_preview(ct, 4)
+        const tcol = els.content_text_col.value
+        const idc = els.content_id_col.value
+        const pc = els.content_page_col.value
+        const partc = els.content_part_col.value
+        const hno_col = ct_meta?.column_names?.find?.(c => lower(c).trim() === 'hno')
+        sample.forEach((row, idx) => {
+          const snippet = decode_value(row?.[tcol]).replace(/\s+/g, ' ').trim().slice(0, 120)
+          const idv = idc ? row?.[idc] : ''
+          const pv = pc ? row?.[pc] : ''
+          const partv = partc ? row?.[partc] : ''
+          const hno = hno_col ? row?.[hno_col] : ''
+          log(`Row ${idx + 1}: id=${idv} page=${pv} part=${partv}${hno_col ? ` hno=${hno}` : ''} text="${snippet}"`)
+        })
+      }
+
+      const { title, author } = extract_title_author()
+      els.sum_title.textContent = title || '-'
+      els.sum_author.textContent = author || '-'
+
+      show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB".')
+      set_status('جاهز للتحويل')
+      els.convert_btn.disabled = false
+    }
+
+    const parse_raw_toc = () => {
+      const toc_table = els.toc_table.value
+      if (!toc_table) return null
+      const toc_text_col = els.toc_text_col.value
+      const toc_start_col = els.toc_start_col.value
+      if (!toc_text_col || !toc_start_col) return null
+
+      log(`TOC table: ${toc_table} text=${toc_text_col} start=${toc_start_col}`)
+      const table = mdb.getTable(toc_table)
+      const rows = table.getData()
+      const seen = new Set()
+      const items = []
+
+      const to_int = v => {
+        if (typeof v === 'number') return v
+        if (typeof v === 'string' && /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)) return Number(digits_to_ascii(v))
+        return null
+      }
+
+      for (const row of rows) {
+        const text = decode_value(row?.[toc_text_col]).trim()
+        const start = to_int(row?.[toc_start_col])
+        if (!text || start == null) continue
+        if (/^الجزء\s+/.test(text)) continue
+        const key = `${start}|${text}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push({ start, text })
+      }
+
+      return items.length ? items : null
+    }
+
+    const parse_pages = async (toc_starts = null) => {
+      const content_table = els.content_table.value
+      const text_col = els.content_text_col.value
+      if (!content_table || !text_col) throw new Error('حدد جدول المحتوى وعمود النص')
+
+      const id_col = els.content_id_col.value || null
+      const page_col = els.content_page_col.value || null
+      const part_col = els.content_part_col.value || null
+      const chunk_size = Math.max(200, Math.min(20000, Number(els.chunk_size.value) || 2000))
+      const split_numbered = !!els.split_numbered.checked
+
+      const table = mdb.getTable(content_table)
+      const row_count = table.rowCount
+      log(`Content table: ${content_table} rows=${row_count} text_col=${text_col} id_col=${id_col ?? '-'} page_col=${page_col ?? '-'} part_col=${part_col ?? '-'}`)
+      set_status('قراءة المحتوى...')
+
+      const pages = []
+      const id_to_page_number = new Map()
+      const id_to_snippet = new Map()
+
+      const to_int = v => {
+        if (typeof v === 'number') return v
+        if (typeof v === 'string' && /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)) return Number(digits_to_ascii(v))
+        return null
+      }
+
+      const starts = toc_starts ? new Set(toc_starts) : null
+      const is_numbered = text => /^(?:[0-9\u0660-\u0669\u06F0-\u06F9]{1,4})\s*[-–—]\s+/.test(text)
+
+      for (let offset = 0; offset < row_count; offset += chunk_size) {
+        const batch = table.getData({ rowOffset: offset, rowLimit: chunk_size })
+        log(`Batch ${offset}..${Math.min(row_count, offset + chunk_size)} (${batch.length})`)
+        for (let i = 0; i < batch.length; i += 1) {
+          const row = batch[i]
+          const raw = decode_value(row?.[text_col]).replace(/\u0000/g, '').trim()
+          if (!raw) continue
+
+          const idv = id_col ? to_int(row?.[id_col]) : null
+          const pv = page_col ? to_int(row?.[page_col]) : null
+          const partv = part_col ? to_int(row?.[part_col]) : null
+
+          const footer = [partv != null ? `الجزء: ${partv}` : null, pv ? `الصفحة: ${pv}` : null].filter(Boolean).join(' - ')
+
+          let chunks = []
+          if (!split_numbered || looks_like_html(raw)) {
+            const paras = to_html_paragraphs(raw)
+            if (!paras.length) continue
+            chunks = [paras]
+          } else {
+            const parts = split_plain_text(raw)
+            let current = []
+            for (const part of parts) {
+              const t = String(part).trim()
+              if (!t) continue
+              const split_here = current.length && (is_heading_text(t) || is_numbered(t))
+              if (split_here) {
+                chunks.push(current)
+                current = [t]
+              } else {
+                current.push(t)
+              }
+            }
+            if (current.length) chunks.push(current)
+            chunks = chunks.map(list => list.map(p => `<p>${escape_xml(p)}</p>`))
+            if (!chunks.length) continue
+          }
+
+          let anchor_chunk_index = 0
+          if (starts && idv != null && starts.has(idv)) {
+            const idx = chunks.findIndex(c => {
+              const first = c?.[0]?.replace(/<[^>]+>/g, '').trim() ?? ''
+              return is_heading_text(first)
+            })
+            if (idx >= 0) anchor_chunk_index = idx
+          }
+
+          chunks.forEach((paras, chunk_index) => {
+            const out = []
+            if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) out.push(`<a id="toc_${idv}"></a>`)
+            out.push(...paras)
+            const body = `<div>${out.join('')}</div>`
+            const text_html = footer ? `${body}<div class="text-center">${footer}</div>` : body
+            const page_number = pages.length + 1
+            pages.push({ page_number, page: pv ?? 0, part: partv, text_html: sanitize_html_for_xhtml(text_html) })
+
+            if (idv != null && (!starts || !starts.has(idv) || chunk_index === anchor_chunk_index)) id_to_page_number.set(idv, page_number)
+          })
+
+          if (idv != null && !id_to_snippet.has(idv)) {
+            const flat = chunks.flat()
+            const p0 = flat[0]?.replace(/<[^>]+>/g, ' ')?.replace(/\s+/g, ' ')?.trim() ?? ''
+            const p1 = flat[1]?.replace(/<[^>]+>/g, ' ')?.replace(/\s+/g, ' ')?.trim() ?? ''
+            id_to_snippet.set(idv, `${p0}\n${p1}`.trim())
+          }
+        }
+        await new Promise(r => setTimeout(r, 0))
+      }
+
+      log(`Pages built: ${pages.length}`)
+      els.sum_pages.textContent = String(pages.length)
+      return { pages, id_to_page_number, id_to_snippet }
+    }
+
+    const auto_toc_from_pages = pages => {
+      const items = []
+      const seen = new Set()
+      const first_para = html => {
+        const m = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i)
+        if (!m) return ''
+        return m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+      }
+      for (const page of pages) {
+        const t = first_para(page.text_html)
+        if (!t) continue
+        if (t.length > 100) continue
+        if (/^(?:تفسير\s+سورة|سورة)\s+/.test(t)) {
+          if (seen.has(t)) continue
+          seen.add(t)
+          items.push({ page: page.page_number, text: t })
+        }
+      }
+      return items.length ? items : null
+    }
+
+    const map_toc = (raw_toc, id_to_page_number, id_to_snippet) => {
+      if (!raw_toc?.length) return null
+      const items = []
+      const seen = new Set()
+      for (const entry of raw_toc) {
+        const page_number = id_to_page_number.get(entry.start)
+        if (typeof page_number !== 'number' || !page_number) continue
+        let text = entry.text
+        const snippet = id_to_snippet?.get?.(entry.start) ?? ''
+        if (/^سورة\s+/.test(text)) {
+          const alt = `تفسير ${text}`
+          if (snippet.includes(alt)) text = alt
+        }
+
+        const key = `${page_number}|${text}`
+        if (seen.has(key)) continue
+        seen.add(key)
+        items.push({ text, page: page_number, anchor: `toc_${entry.start}` })
+      }
+      if (!items.length) return null
+      items.sort((a, b) => a.page - b.page)
+      return items
+    }
+
+    els.bok_file.addEventListener('change', () => {
+      els.analyze_btn.disabled = !els.bok_file.files?.[0]
+      els.convert_btn.disabled = true
+      if (els.bok_file.files?.[0]) show_warn('اضغط "تحليل" لاستخراج الجداول والأعمدة.')
+    })
+
+    els.content_table.addEventListener('change', update_content_columns_ui)
+    els.toc_table.addEventListener('change', update_toc_columns_ui)
+
+    els.analyze_btn.addEventListener('click', async () => {
+      try {
+        const file = els.bok_file.files?.[0]
+        if (!file) return
+        els.analyze_btn.disabled = true
+        els.convert_btn.disabled = true
+        log_lines.length = 0
+        log('---')
+        await analyze_file(file)
+      } catch (e) {
+        show_warn(`فشل التحليل: ${String(e?.message ?? e)}`)
+        set_status('خطأ')
+        log('ERR', String(e?.stack ?? e))
+      } finally {
+        els.analyze_btn.disabled = !els.bok_file.files?.[0]
+      }
+    })
+
+    els.convert_btn.addEventListener('click', async () => {
+      try {
+        els.convert_btn.disabled = true
+        set_status('تحويل...')
+        const raw_toc = parse_raw_toc()
+        const toc_starts = raw_toc?.map(t => t.start) ?? null
+        const { pages, id_to_page_number, id_to_snippet } = await parse_pages(toc_starts)
+        const toc = map_toc(raw_toc, id_to_page_number, id_to_snippet) ?? auto_toc_from_pages(pages)
+        const { title, author } = extract_title_author()
+        const about = `<div>
+<h1>${escape_xml(title)}</h1>
+${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
+<p class="small">تم التحويل محليًا من ملف .bok داخل المتصفح.</p>
+</div>`
+        const info = { id: 0, title, author, about, toc }
+        set_status('بناء EPUB...')
+        const { blob, filename } = await build_epub(info, pages)
+        download_blob(blob, filename)
+        show_ok(`تم إنشاء الملف: ${filename}`)
+        set_status('تم')
+      } catch (e) {
+        show_warn(`فشل التحويل: ${String(e?.message ?? e)}`)
+        set_status('خطأ')
+        log('ERR', String(e?.stack ?? e))
+      } finally {
+        els.convert_btn.disabled = false
+      }
+    })
+
+    show_warn('اختر ملف .bok ثم اضغط "تحليل".')
+    log('Ready')
+  </script>
+</body>
+
+</html>
