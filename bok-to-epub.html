@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Shamela .bok إلى EPUB (قديم)</title>
+  <title>Shamela .bok إلى EPUB + PDF (قديم)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -130,6 +130,44 @@
       align-items: center;
       gap: 12px;
       background: rgba(255, 247, 238, .7);
+    }
+
+    .card .head.file_head {
+      display: grid;
+      grid-template-columns: minmax(320px, 1fr) auto;
+      align-items: center;
+      gap: 12px 18px
+    }
+
+    .card .head.file_head .head_text {
+      min-width: 0
+    }
+
+    .card .head.file_head .head_actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-start
+    }
+
+    .card .head.file_head .head_actions button {
+      flex: 0 1 auto;
+      min-width: 140px;
+      max-width: 280px;
+      white-space: normal;
+      line-height: 1.3;
+      text-align: center
+    }
+
+    @media (max-width: 1150px) {
+      .card .head.file_head {
+        grid-template-columns: 1fr
+      }
+
+      .card .head.file_head .head_actions button {
+        flex: 1 1 220px;
+        max-width: none
+      }
     }
 
     .card .body {
@@ -358,7 +396,7 @@
   <div class="wrap">
     <header>
       <div class="title">
-        <h1>أداة تحويل كتب الشاملة القديمة (.bok) إلى EPUB</h1>
+        <h1>أداة تحويل كتب الشاملة القديمة (.bok) إلى EPUB / PDF</h1>
         <div class="sub">
           تعمل بالكامل داخل المتصفح دون رفع ملفات. تدعم اختيار جداول/أعمدة الشاملة يدويًا إذا فشلت التخمينات.
         </div>
@@ -367,15 +405,15 @@
 
     <div class="grid">
       <section class="card">
-        <div class="head">
-          <div>
+        <div class="head file_head">
+          <div class="head_text">
             <div class="h">الملف والإعدادات</div>
             <div class="hint">اختر ملفًا واحدًا أو عدة ملفات .bok ثم راجع الجداول/الأعمدة إن لزم</div>
           </div>
-          <div class="btns">
+          <div class="btns head_actions">
             <button id="analyze_btn" class="primary" disabled>تحليل</button>
-            <button id="convert_btn" class="good" disabled>تحويل وتنزيل EPUB</button>
-            <button id="batch_convert_btn" class="good" disabled>تحويل دفعة (ZIP)</button>
+            <button id="convert_btn" class="good" disabled>تحويل وتنزيل</button>
+            <button id="batch_convert_btn" class="good" disabled>تحويل مجموعة (ZIP)</button>
           </div>
         </div>
         <div class="body">
@@ -398,7 +436,18 @@
             </div>
             <label class="check grow">
               <input id="download_each_mode" type="checkbox" checked />
-              <span>في التحويل الدفعي: تنزيل كل EPUB مباشرة (بدون ZIP)</span>
+              <span>في التحويل الجماعي: تنزيل كل ملف مباشرة (بدون ZIP)</span>
+            </label>
+            <label class="check grow">
+              <input id="include_pdf" type="checkbox" />
+              <span>إنشاء PDF مع EPUB (اختياري)</span>
+            </label>
+            <label>
+              خط PDF
+              <select id="pdf_font">
+                <option value="Cairo">Cairo</option>
+                <option value="AmiriQuran">Amiri Quran</option>
+              </select>
             </label>
           </div>
 
@@ -566,6 +615,8 @@
       convert_btn: $('#convert_btn'),
       batch_convert_btn: $('#batch_convert_btn'),
       download_each_mode: $('#download_each_mode'),
+      include_pdf: $('#include_pdf'),
+      pdf_font: $('#pdf_font'),
       book_prev_btn: $('#book_prev_btn'),
       book_next_btn: $('#book_next_btn'),
       book_nav_label: $('#book_nav_label'),
@@ -769,13 +820,19 @@
 
     let MDBReader
     let JSZip
+    let pdfmake_api
     let mdb
+    let pdf_libs_loaded = false
     let current_file = null
     let table_names = []
     let table_meta = new Map()
     let analysis_results = []
     let analysis_signature = ''
     let active_book_index = -1
+    const PDFMAKE_RTL_VERSION = '2.1.2'
+    const PDF_BLOB_TIMEOUT_MS = 600000
+    const AMIRI_QURAN_TTF_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiriquran/AmiriQuran-Regular.ttf'
+    let amiri_quran_loaded = false
 
     const load_libs = async () => {
       if (MDBReader && JSZip) return
@@ -788,6 +845,96 @@
       const mdb_mod = await import('https://esm.sh/mdb-reader@3.1.0?bundle')
       MDBReader = mdb_mod.default
       log('OK: libs loaded')
+    }
+
+    const load_script = src => new Promise((resolve, reject) => {
+      const existing = [...document.scripts].find(s => s.src === src)
+      if (existing) {
+        if (existing.dataset.loaded === '1') return resolve()
+        if (existing.dataset.error === '1') return reject(new Error(`Failed to load ${src}`))
+        existing.addEventListener('load', () => resolve(), { once: true })
+        existing.addEventListener('error', () => reject(new Error(`Failed to load ${src}`)), { once: true })
+        return
+      }
+      const script = document.createElement('script')
+      script.src = src
+      script.async = true
+      script.onload = () => {
+        script.dataset.loaded = '1'
+        resolve()
+      }
+      script.onerror = () => {
+        script.dataset.error = '1'
+        reject(new Error(`Failed to load ${src}`))
+      }
+      document.head.appendChild(script)
+    })
+
+    const load_pdf_libs = async () => {
+      if (pdf_libs_loaded && pdfmake_api?.createPdf) return
+
+      const packages = ['@digicole/pdfmake-rtl', 'pdfmake-rtl']
+      let last_error = null
+      set_status('تحميل مكتبات PDF...')
+      log(`Loading PDF libs (pinned: ${PDFMAKE_RTL_VERSION})...`)
+
+      for (const pkg of packages) {
+        try {
+          const base = `https://cdn.jsdelivr.net/npm/${pkg}@${PDFMAKE_RTL_VERSION}/build`
+          await load_script(`${base}/pdfmake.min.js`)
+          await load_script(`${base}/vfs_fonts.js`)
+          await load_script(`${base}/fonts/Cairo.js`)
+          const api = globalThis.pdfMake ?? globalThis.pdfmake
+          if (!api?.createPdf) throw new Error('pdfmake runtime is not available')
+          const cairo = globalThis.Cairo ?? globalThis.cairo
+          if (cairo && api.addFonts) api.addFonts(cairo)
+          pdfmake_api = api
+          pdf_libs_loaded = true
+          log(`OK: PDF libs loaded from ${pkg}@${PDFMAKE_RTL_VERSION}`)
+          return
+        } catch (e) {
+          last_error = e
+          log(`ERR: PDF libs failed from ${pkg}@${PDFMAKE_RTL_VERSION}: ${String(e?.message ?? e)}`)
+        }
+      }
+      throw new Error(`تعذر تحميل مكتبات PDF: ${String(last_error?.message ?? last_error)}`)
+    }
+
+    const array_buffer_to_base64 = buffer => {
+      const bytes = new Uint8Array(buffer)
+      let bin = ''
+      const step = 0x8000
+      for (let i = 0; i < bytes.length; i += step) bin += String.fromCharCode(...bytes.subarray(i, i + step))
+      return btoa(bin)
+    }
+
+    const load_amiri_quran_font = async () => {
+      if (amiri_quran_loaded) return
+
+      set_status('تحميل خط PDF: AmiriQuran...')
+      log('Loading PDF font: AmiriQuran')
+
+      const response = await fetch(AMIRI_QURAN_TTF_URL)
+      if (!response.ok) throw new Error('فشل تحميل خط AmiriQuran')
+      const buffer = await response.arrayBuffer()
+      const vfs = { 'AmiriQuran-Regular.ttf': array_buffer_to_base64(buffer) }
+      const fonts = {
+        AmiriQuran: {
+          normal: 'AmiriQuran-Regular.ttf',
+          bold: 'AmiriQuran-Regular.ttf',
+          italics: 'AmiriQuran-Regular.ttf',
+          bolditalics: 'AmiriQuran-Regular.ttf',
+        },
+      }
+
+      if (pdfmake_api?.addFontContainer) pdfmake_api.addFontContainer({ vfs, fonts })
+      else {
+        if (pdfmake_api?.addVirtualFileSystem) pdfmake_api.addVirtualFileSystem(vfs)
+        if (pdfmake_api?.addFonts) pdfmake_api.addFonts(fonts)
+      }
+
+      amiri_quran_loaded = true
+      log('OK: PDF font loaded: AmiriQuran')
     }
 
     const set_select_options = (select, options, { placeholder = null } = {}) => {
@@ -1361,6 +1508,155 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       return { blob, filename }
     }
 
+    const html_to_pdf_text = text_html => {
+      const raw = String(text_html ?? '').replace(/\u0000/g, '').trim()
+      if (!raw) return ''
+
+      const container = document.createElement('div')
+      container.innerHTML = raw
+        .replace(/<br\s*\/?>/gi, '\n')
+        .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|blockquote)>/gi, '\n')
+      container.querySelectorAll('script,style').forEach(node => node.remove())
+
+      return (container.textContent ?? '')
+        .split(/\n+/)
+        .map(line => line.replace(/\s+/g, ' ').trim())
+        .filter(Boolean)
+        .join('\n\n')
+    }
+
+    const compact_pdf_text = text =>
+      String(text ?? '')
+        .replace(/\u00a0/g, ' ')
+        .replace(/[ \t]+/g, ' ')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim()
+
+    const get_pdf_font_name = preferred_font => {
+      const fonts = Object.keys(pdfmake_api?.fonts ?? {})
+      if (preferred_font && fonts.includes(preferred_font)) return preferred_font
+      if (fonts.includes('Cairo')) return 'Cairo'
+      return fonts[0] ?? 'Cairo'
+    }
+
+    const build_pdf_doc = async (info, pages) => {
+      await load_pdf_libs()
+      const title = info.title || `الشاملة ${info.id ?? 0}`
+      const author = info.author || ''
+      const filename = sanitize_filename(`${title}${author ? ` - ${author}` : ''}.pdf`)
+      const requested_font = els.pdf_font.value === 'AmiriQuran' ? 'AmiriQuran' : 'Cairo'
+      if (requested_font === 'AmiriQuran') {
+        try {
+          await load_amiri_quran_font()
+        } catch (e) {
+          log(`WARN: PDF font load failed (${requested_font}): ${String(e?.message ?? e)}`)
+        }
+      }
+      const pdf_font = get_pdf_font_name(requested_font)
+
+      set_status('بناء PDF...')
+      log('Building PDF...')
+      log(`PDF font: ${pdf_font}`)
+
+      const sorted_pages = [...pages].sort((a, b) => a.page_number - b.page_number)
+      const source_groups = []
+      const total_pages = sorted_pages.length
+
+      for (let i = 0; i < sorted_pages.length; i += 1) {
+        const entry = sorted_pages[i]
+        const has_source_page = typeof entry.page === 'number' && entry.page > 0
+        const key = has_source_page ? `${entry.part ?? ''}|${entry.page}` : `generated_${entry.page_number}`
+        let group = source_groups[source_groups.length - 1]
+        if (!group || group.key !== key) {
+          group = { key, part: entry.part, page: entry.page, texts: [] }
+          source_groups.push(group)
+        }
+        const text = html_to_pdf_text(entry.text_html)
+        if (text) group.texts.push(text)
+        if (i % 25 === 0) {
+          set_status(`بناء PDF... (${Math.min(i + 1, total_pages)}/${total_pages})`)
+          await new Promise(r => setTimeout(r, 0))
+        }
+      }
+
+      const content = [
+        { text: title, style: 'title' },
+      ]
+
+      if (author) content.push({ text: `المؤلف: ${author}`, style: 'author' })
+      if (source_groups.length) content.push({ text: '', margin: [0, 0, 0, 8], pageBreak: 'after' })
+
+      source_groups.forEach((group, idx) => {
+        const meta = [
+          group.part != null ? `الجزء: ${group.part}` : null,
+          group.page ? `الصفحة: ${group.page}` : null,
+        ].filter(Boolean).join(' - ')
+        if (meta) content.push({ text: meta, style: 'page_meta' })
+        const page_text = group.texts.length ? compact_pdf_text(group.texts.join('\n')) : ' '
+        content.push({ text: page_text, style: 'paragraph' })
+        if (idx < source_groups.length - 1) content.push({ text: '', pageBreak: 'after' })
+      })
+
+      const doc_definition = {
+        info: {
+          title,
+          author,
+          producer: 'Shamela (.bok)',
+          creator: 'Shamela (.bok) browser converter',
+        },
+        rtl: true,
+        pageSize: 'A4',
+        pageMargins: [36, 42, 36, 42],
+        defaultStyle: {
+          font: pdf_font,
+          alignment: 'right',
+          fontSize: 13,
+          lineHeight: 1.2,
+        },
+        styles: {
+          title: { fontSize: 20, bold: true, alignment: 'center', margin: [0, 0, 0, 10] },
+          author: { fontSize: 13, alignment: 'center', margin: [0, 0, 0, 12] },
+          page_meta: { fontSize: 10, color: '#4b5563', margin: [0, 0, 0, 8] },
+          paragraph: { margin: [0, 0, 0, 2] },
+        },
+        content,
+      }
+
+      return { filename, doc_definition }
+    }
+
+    const build_pdf_blob = async (pdf_doc, timeout_ms = PDF_BLOB_TIMEOUT_MS) => await new Promise((resolve, reject) => {
+      let finished = false
+      let timeout_id = null
+
+      const done = (cb, value) => {
+        if (finished) return
+        finished = true
+        if (timeout_id) clearTimeout(timeout_id)
+        cb(value)
+      }
+
+      if (timeout_ms > 0) {
+        timeout_id = setTimeout(() => {
+          if (finished) return
+          finished = true
+          reject(new Error('انتهت مهلة إنشاء PDF. جرّب ملفًا أصغر أو عطّل PDF لهذا التحويل.'))
+        }, timeout_ms)
+      }
+
+      try {
+        pdfmake_api.createPdf(pdf_doc.doc_definition).getBlob(blob_value => done(resolve, blob_value))
+      } catch (e) {
+        done(reject, e)
+      }
+    })
+
+    const download_pdf_doc = (pdf_doc, file_name = '') => {
+      const out_name = sanitize_filename(file_name || pdf_doc.filename || 'book.pdf')
+      log(`Downloading PDF: ${out_name}`)
+      pdfmake_api.createPdf(pdf_doc.doc_definition).download(out_name)
+    }
+
     const analyze_file = async (file, { skip_success_message = false, enable_convert = true } = {}) => {
       await load_libs()
       set_status('قراءة الملف...')
@@ -1412,12 +1708,12 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       els.sum_title.textContent = title || '-'
       els.sum_author.textContent = author || '-'
 
-      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB".')
+      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB (+PDF اختياري)".')
       set_status('جاهز للتحويل')
       if (enable_convert) els.convert_btn.disabled = false
     }
 
-    const convert_current_mdb_to_epub = async fallback_name => {
+    const build_current_book_payload = async fallback_name => {
       const raw_toc = parse_raw_toc()
       const toc_starts = raw_toc?.map(t => t.start) ?? null
       const { pages, id_to_page_number, id_to_snippet } = await parse_pages(toc_starts)
@@ -1426,11 +1722,29 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       const about = `<div>
 <h1>${escape_xml(title)}</h1>
 ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
-<p class="small">تم التحويل محليًا من ملف .bok داخل المتصفح.</p>
+<p class="small">تم التحويل محليًا من ملف .bok داخل المتصفح إلى EPUB مع PDF اختياري.</p>
 </div>`
       const info = { id: 0, title, author, about, toc }
+      return { info, pages }
+    }
+
+    const convert_current_mdb_outputs = async (fallback_name, { include_pdf = false, pdf_mode = 'blob' } = {}) => {
+      const { info, pages } = await build_current_book_payload(fallback_name)
       set_status('بناء EPUB...')
-      return build_epub(info, pages)
+      const epub = await build_epub(info, pages)
+      let pdf = null
+      let pdf_error = ''
+      if (include_pdf) {
+        try {
+          const pdf_doc = await build_pdf_doc(info, pages)
+          if (pdf_mode === 'download') pdf = { filename: pdf_doc.filename, doc_definition: pdf_doc.doc_definition }
+          else pdf = { filename: pdf_doc.filename, blob: await build_pdf_blob(pdf_doc) }
+        } catch (e) {
+          pdf_error = String(e?.message ?? e)
+          log(`ERR: PDF build failed: ${pdf_error}`)
+        }
+      }
+      return { epub, pdf, pdf_error }
     }
 
     const load_book_by_index = async (index, { keep_current = true } = {}) => {
@@ -1648,7 +1962,11 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
     }
 
     const update_batch_btn_label = () => {
-      els.batch_convert_btn.textContent = els.download_each_mode.checked ? 'تحويل دفعة (تنزيل مباشر)' : 'تحويل دفعة (ZIP)'
+      els.batch_convert_btn.textContent = els.download_each_mode.checked ? 'تحويل جماعي (تنزيل مباشر)' : 'تحويل جماعي (ZIP)'
+    }
+
+    const update_pdf_font_ui = () => {
+      els.pdf_font.disabled = !els.include_pdf.checked
     }
 
     const reset_log = () => {
@@ -1737,6 +2055,7 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
     })
 
     els.download_each_mode.addEventListener('change', update_batch_btn_label)
+    els.include_pdf.addEventListener('change', update_pdf_font_ui)
 
     els.preflight_tbody.addEventListener('click', async event => {
       const row = event.target.closest('tr[data-idx]')
@@ -1830,10 +2149,20 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
         els.convert_btn.disabled = true
         set_status('تحويل...')
         const fallback_name = current_file?.name ?? els.bok_file.files?.[0]?.name ?? ''
-        const { blob, filename } = await convert_current_mdb_to_epub(fallback_name)
-        download_blob(blob, filename)
-        show_ok(`تم إنشاء الملف: ${filename}`)
-        set_status('تم')
+        const include_pdf = !!els.include_pdf.checked
+        const { epub, pdf, pdf_error } = await convert_current_mdb_outputs(fallback_name, {
+          include_pdf,
+          pdf_mode: include_pdf ? 'download' : 'blob',
+        })
+        download_blob(epub.blob, epub.filename)
+        if (include_pdf && pdf) download_pdf_doc(pdf, pdf.filename)
+        if (include_pdf && pdf_error) {
+          show_warn(`تم إنشاء EPUB (${epub.filename}) لكن فشل PDF: ${pdf_error}`)
+          set_status('تم جزئيًا')
+        } else {
+          show_ok(include_pdf ? `تم إنشاء الملفين: ${epub.filename} + ${pdf?.filename}` : `تم إنشاء الملف: ${epub.filename}`)
+          set_status('تم')
+        }
       } catch (e) {
         show_warn(`فشل التحويل: ${String(e?.message ?? e)}`)
         set_status('خطأ')
@@ -1864,6 +2193,7 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
       }))
 
       const download_each = !!els.download_each_mode.checked
+      const include_pdf = !!els.include_pdf.checked
       const uniquify_name = (name, seen) => {
         if (!seen.has(name)) return name
         const dot = name.lastIndexOf('.')
@@ -1883,6 +2213,8 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
         const used_names = new Set()
         const batch_zip = download_each ? null : new JSZip()
         let success_count = 0
+        let pdf_success_count = 0
+        let pdf_error_count = 0
 
         for (let i = 0; i < items.length; i += 1) {
           const item = items[i]
@@ -1896,16 +2228,31 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
           try {
             await analyze_file(file, { skip_success_message: true, enable_convert: false })
             if (item.selection) apply_book_selection(item.selection)
-            const { blob, filename } = await convert_current_mdb_to_epub(file.name)
-            const out_name = uniquify_name(filename, used_names)
-            used_names.add(out_name)
+            const { epub, pdf, pdf_error } = await convert_current_mdb_outputs(file.name, {
+              include_pdf,
+              pdf_mode: download_each ? 'download' : 'blob',
+            })
+            const epub_name = uniquify_name(epub.filename, used_names)
+            used_names.add(epub_name)
 
-            if (download_each) download_blob(blob, out_name)
-            else batch_zip.file(out_name, blob)
+            if (download_each) download_blob(epub.blob, epub_name)
+            else batch_zip.file(epub_name, epub.blob)
+            log(`OK: ${epub_name}`)
+
+            if (include_pdf && pdf) {
+              const pdf_name = uniquify_name(pdf.filename, used_names)
+              used_names.add(pdf_name)
+              if (download_each) download_pdf_doc(pdf, pdf_name)
+              else batch_zip.file(pdf_name, pdf.blob)
+              pdf_success_count += 1
+              log(`OK: ${pdf_name}`)
+            } else if (include_pdf && pdf_error) {
+              pdf_error_count += 1
+              log(`ERR: PDF ${file.name} -> ${pdf_error}`)
+            }
 
             if (use_preflight) active_book_index = i
             success_count += 1
-            log(`OK: ${out_name}`)
           } catch (e) {
             log(`ERR: ${file.name} -> ${String(e?.message ?? e)}`)
           }
@@ -1914,8 +2261,10 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
         if (!success_count) throw new Error('فشل تحويل جميع الملفات')
 
         if (download_each) {
-          show_ok(`تم تنزيل ${success_count} ملف EPUB مباشرة`)
-          set_status('تم')
+          if (include_pdf) show_ok(`تم تنزيل ${success_count} ملف EPUB و ${pdf_success_count} ملف PDF مباشرة`)
+          else show_ok(`تم تنزيل ${success_count} ملف EPUB مباشرة`)
+          if (include_pdf && pdf_error_count) set_status('تم جزئيًا')
+          else set_status('تم')
         } else {
           const ts = new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)
           const zip_name = sanitize_filename(`bok-to-epub-batch-${ts}.zip`)
@@ -1927,8 +2276,10 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
             compressionOptions: { level: 9 },
           })
           download_blob(zip_blob, zip_name)
-          show_ok(`تم تحويل ${success_count} ملف وتنزيل ${zip_name}`)
-          set_status('تم')
+          if (include_pdf) show_ok(`تم تحويل ${success_count} ملف EPUB و ${pdf_success_count} ملف PDF وتنزيل ${zip_name}`)
+          else show_ok(`تم تحويل ${success_count} ملف وتنزيل ${zip_name}`)
+          if (include_pdf && pdf_error_count) set_status('تم جزئيًا')
+          else set_status('تم')
         }
       } catch (e) {
         show_warn(`فشل التحويل الدفعي: ${String(e?.message ?? e)}`)
@@ -1941,6 +2292,7 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
     })
 
     update_batch_btn_label()
+    update_pdf_font_ui()
     refresh_preflight_ui()
     sync_primary_buttons()
     show_warn('اختر ملف .bok واحدًا أو أكثر ثم اضغط "تحليل كل الملفات".')
