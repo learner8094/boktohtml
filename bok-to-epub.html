@@ -294,6 +294,63 @@
       font-size: 12px;
       color: var(--muted)
     }
+
+    .book_nav {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap
+    }
+
+    .book_nav .label {
+      min-width: 220px;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .6);
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center
+    }
+
+    .results_wrap {
+      margin-top: 10px;
+      max-height: 260px;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, .5)
+    }
+
+    .results_table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px
+    }
+
+    .results_table th,
+    .results_table td {
+      border-bottom: 1px solid var(--line);
+      padding: 8px;
+      text-align: right;
+      vertical-align: top
+    }
+
+    .results_table tbody tr {
+      cursor: pointer
+    }
+
+    .results_table tbody tr:hover {
+      background: rgba(15, 118, 110, .08)
+    }
+
+    .results_table tbody tr.active {
+      background: rgba(177, 50, 30, .11)
+    }
+
+    .results_table tbody tr.error {
+      background: rgba(177, 50, 30, .08)
+    }
   </style>
 </head>
 
@@ -313,23 +370,44 @@
         <div class="head">
           <div>
             <div class="h">الملف والإعدادات</div>
-            <div class="hint">اختر ملف .bok ثم راجع الجداول/الأعمدة إن لزم</div>
+            <div class="hint">اختر ملفًا واحدًا أو عدة ملفات .bok ثم راجع الجداول/الأعمدة إن لزم</div>
           </div>
           <div class="btns">
             <button id="analyze_btn" class="primary" disabled>تحليل</button>
             <button id="convert_btn" class="good" disabled>تحويل وتنزيل EPUB</button>
+            <button id="batch_convert_btn" class="good" disabled>تحويل دفعة (ZIP)</button>
           </div>
         </div>
         <div class="body">
           <div class="row">
             <label class="grow">
-              ملف .bok
-              <input id="bok_file" type="file" accept=".bok,.mdb,.accdb" />
+              ملف .bok (واحد أو أكثر)
+              <input id="bok_file" type="file" accept=".bok,.mdb,.accdb" multiple />
             </label>
             <label>
               كلمة مرور (اختياري)
               <input id="db_password" type="text" autocomplete="off" />
             </label>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="row">
+            <div class="btns">
+              <button id="analyze_all_btn" class="primary" disabled>تحليل كل الملفات</button>
+            </div>
+            <label class="check grow">
+              <input id="download_each_mode" type="checkbox" checked />
+              <span>في التحويل الدفعي: تنزيل كل EPUB مباشرة (بدون ZIP)</span>
+            </label>
+          </div>
+
+          <div style="height:10px"></div>
+
+          <div class="book_nav">
+            <button id="book_prev_btn" disabled>السابق</button>
+            <div class="label" id="book_nav_label">لا يوجد كتاب محدد</div>
+            <button id="book_next_btn" disabled>التالي</button>
           </div>
 
           <div style="height:12px"></div>
@@ -449,6 +527,29 @@
             قائمة الجداول
             <textarea id="tables_dump" readonly></textarea>
           </label>
+
+          <div style="height:10px"></div>
+
+          <div class="small">نتائج التحليل المسبق (اضغط صفًا للانتقال إلى بياناته)</div>
+          <div class="results_wrap">
+            <table class="results_table">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>الملف</th>
+                  <th>الحالة</th>
+                  <th>الكتاب</th>
+                  <th>الجداول</th>
+                  <th>جدول المحتوى</th>
+                </tr>
+              </thead>
+              <tbody id="preflight_tbody">
+                <tr>
+                  <td colspan="6" class="small">لم يتم التحليل بعد</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </aside>
     </div>
@@ -461,7 +562,13 @@
       bok_file: $('#bok_file'),
       db_password: $('#db_password'),
       analyze_btn: $('#analyze_btn'),
+      analyze_all_btn: $('#analyze_all_btn'),
       convert_btn: $('#convert_btn'),
+      batch_convert_btn: $('#batch_convert_btn'),
+      download_each_mode: $('#download_each_mode'),
+      book_prev_btn: $('#book_prev_btn'),
+      book_next_btn: $('#book_next_btn'),
+      book_nav_label: $('#book_nav_label'),
       content_table: $('#content_table'),
       content_text_col: $('#content_text_col'),
       content_id_col: $('#content_id_col'),
@@ -484,6 +591,7 @@
       sum_tables: $('#sum_tables'),
       sum_pages: $('#sum_pages'),
       tables_dump: $('#tables_dump'),
+      preflight_tbody: $('#preflight_tbody'),
     }
 
     const log_lines = []
@@ -662,8 +770,12 @@
     let MDBReader
     let JSZip
     let mdb
+    let current_file = null
     let table_names = []
     let table_meta = new Map()
+    let analysis_results = []
+    let analysis_signature = ''
+    let active_book_index = -1
 
     const load_libs = async () => {
       if (MDBReader && JSZip) return
@@ -692,6 +804,110 @@
         opt.textContent = value
         select.appendChild(opt)
       })
+    }
+
+    const make_file_key = file => `${file?.name ?? ''}|${file?.size ?? 0}|${file?.lastModified ?? 0}`
+    const files_signature = files => files.map(make_file_key).join('::')
+    const has_option = (select, value) => [...select.options].some(opt => opt.value === value)
+    const selected_files = () => Array.from(els.bok_file.files ?? [])
+    const set_select_value = (select, value) => {
+      const v = value ?? ''
+      if (has_option(select, v)) select.value = v
+    }
+    const refresh_preflight_ui = () => {
+      render_preflight_table()
+      update_book_nav()
+    }
+
+    const capture_book_selection = () => ({
+      content_table: els.content_table.value || '',
+      content_text_col: els.content_text_col.value || '',
+      content_id_col: els.content_id_col.value || '',
+      content_page_col: els.content_page_col.value || '',
+      content_part_col: els.content_part_col.value || '',
+      toc_table: els.toc_table.value || '',
+      toc_text_col: els.toc_text_col.value || '',
+      toc_start_col: els.toc_start_col.value || '',
+      toc_level_col: els.toc_level_col.value || '',
+      chunk_size: String(els.chunk_size.value || '2000'),
+      split_numbered: !!els.split_numbered.checked,
+    })
+
+    const apply_book_selection = selection => {
+      if (!selection) return
+
+      if (selection.content_table && has_option(els.content_table, selection.content_table)) {
+        els.content_table.value = selection.content_table
+        update_content_columns_ui()
+      }
+      if (selection.content_text_col) set_select_value(els.content_text_col, selection.content_text_col)
+      set_select_value(els.content_id_col, selection.content_id_col)
+      set_select_value(els.content_page_col, selection.content_page_col)
+      set_select_value(els.content_part_col, selection.content_part_col)
+
+      if (has_option(els.toc_table, selection.toc_table ?? '')) {
+        els.toc_table.value = selection.toc_table ?? ''
+        update_toc_columns_ui()
+      }
+      if (selection.toc_text_col) set_select_value(els.toc_text_col, selection.toc_text_col)
+      if (selection.toc_start_col) set_select_value(els.toc_start_col, selection.toc_start_col)
+      set_select_value(els.toc_level_col, selection.toc_level_col)
+
+      if (selection.chunk_size) els.chunk_size.value = selection.chunk_size
+      els.split_numbered.checked = !!selection.split_numbered
+    }
+
+    const persist_active_book_selection = () => {
+      if (active_book_index < 0) return
+      const entry = analysis_results[active_book_index]
+      if (!entry || entry.status !== 'ready') return
+      entry.selection = capture_book_selection()
+      entry.content_table = entry.selection.content_table
+      refresh_preflight_ui()
+    }
+
+    const snapshot_current_analysis = file => ({
+      key: make_file_key(file),
+      file,
+      file_name: file.name,
+      status: 'ready',
+      error: '',
+      title: els.sum_title.textContent || '',
+      author: els.sum_author.textContent || '',
+      tables_count: Number(els.sum_tables.textContent || 0),
+      content_table: els.content_table.value || '',
+      selection: capture_book_selection(),
+    })
+
+    const render_preflight_table = () => {
+      if (!analysis_results.length) {
+        els.preflight_tbody.innerHTML = '<tr><td colspan="6" class="small">لم يتم التحليل بعد</td></tr>'
+        return
+      }
+
+      els.preflight_tbody.innerHTML = analysis_results.map((item, idx) => {
+        const active_class = idx === active_book_index ? 'active' : ''
+        const error_class = item.status === 'error' ? 'error' : ''
+        const state = item.status === 'error' ? 'خطأ' : 'جاهز'
+        const title = escape_xml(item.title || '-')
+        const tables = item.status === 'error' ? '-' : String(item.tables_count ?? '-')
+        const content_table = escape_xml(item.content_table || '-')
+        const err = item.status === 'error' ? ` | ${escape_xml(item.error || '')}` : ''
+        return `<tr data-idx="${idx}" class="${active_class} ${error_class}"><td>${idx + 1}</td><td>${escape_xml(item.file_name)}</td><td>${state}${err}</td><td>${title}</td><td>${tables}</td><td>${content_table}</td></tr>`
+      }).join('')
+    }
+
+    const update_book_nav = () => {
+      const total = analysis_results.length
+      if (active_book_index < 0 || !analysis_results[active_book_index]) {
+        els.book_nav_label.textContent = total ? `0/${total}` : 'لا يوجد كتاب محدد'
+      } else {
+        const item = analysis_results[active_book_index]
+        els.book_nav_label.textContent = `${active_book_index + 1}/${total} - ${item.file_name}`
+      }
+
+      els.book_prev_btn.disabled = total < 2
+      els.book_next_btn.disabled = total < 2
     }
 
     const pick_best_text_column = (rows, column_names) => {
@@ -905,7 +1121,7 @@
       return main ?? table_names.find(t => lower(t) === 'main') ?? ''
     }
 
-    const extract_title_author = () => {
+    const extract_title_author = (fallback_name = '') => {
       const override_title = els.override_title.value.trim()
       const override_author = els.override_author.value.trim()
 
@@ -929,7 +1145,8 @@
         if (!author) author = pick(['author', 'auth'], '')
       }
 
-      if (!title) title = els.bok_file.files?.[0]?.name?.replace(/\.(bok|mdb|accdb)$/i, '') ?? 'كتاب'
+      const default_name = fallback_name || els.bok_file.files?.[0]?.name || 'كتاب'
+      if (!title) title = default_name.replace(/\.(bok|mdb|accdb)$/i, '')
       return { title: title.trim(), author: author.trim() }
     }
 
@@ -1144,7 +1361,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       return { blob, filename }
     }
 
-    const analyze_file = async file => {
+    const analyze_file = async (file, { skip_success_message = false, enable_convert = true } = {}) => {
       await load_libs()
       set_status('قراءة الملف...')
       log(`Reading: ${file.name} (${Math.round(file.size / 1024)} KiB)`)
@@ -1153,6 +1370,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       set_status('فتح قاعدة البيانات...')
       mdb = new MDBReader(buf, password ? { password } : undefined)
       table_names = mdb.getTableNames({ normalTables: true, systemTables: false, linkedTables: false })
+      current_file = file
       build_table_meta()
 
       els.tables_dump.value = table_names
@@ -1190,13 +1408,62 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
         })
       }
 
-      const { title, author } = extract_title_author()
+      const { title, author } = extract_title_author(file?.name ?? '')
       els.sum_title.textContent = title || '-'
       els.sum_author.textContent = author || '-'
 
-      show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB".')
+      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB".')
       set_status('جاهز للتحويل')
-      els.convert_btn.disabled = false
+      if (enable_convert) els.convert_btn.disabled = false
+    }
+
+    const convert_current_mdb_to_epub = async fallback_name => {
+      const raw_toc = parse_raw_toc()
+      const toc_starts = raw_toc?.map(t => t.start) ?? null
+      const { pages, id_to_page_number, id_to_snippet } = await parse_pages(toc_starts)
+      const toc = map_toc(raw_toc, id_to_page_number, id_to_snippet) ?? auto_toc_from_pages(pages)
+      const { title, author } = extract_title_author(fallback_name)
+      const about = `<div>
+<h1>${escape_xml(title)}</h1>
+${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
+<p class="small">تم التحويل محليًا من ملف .bok داخل المتصفح.</p>
+</div>`
+      const info = { id: 0, title, author, about, toc }
+      set_status('بناء EPUB...')
+      return build_epub(info, pages)
+    }
+
+    const load_book_by_index = async (index, { keep_current = true } = {}) => {
+      if (index < 0 || index >= analysis_results.length) return
+      if (keep_current) persist_active_book_selection()
+
+      active_book_index = index
+      refresh_preflight_ui()
+
+      const entry = analysis_results[index]
+      if (!entry || entry.status === 'error') {
+        els.convert_btn.disabled = true
+        show_warn(entry?.error ? `الملف يحتوي خطأ: ${entry.error}` : 'لا يمكن تحميل هذا الملف')
+        return
+      }
+
+      try {
+        els.convert_btn.disabled = true
+        set_status(`فتح بيانات: ${entry.file_name}`)
+        await analyze_file(entry.file, { skip_success_message: true, enable_convert: false })
+        apply_book_selection(entry.selection)
+        els.convert_btn.disabled = false
+        set_status('جاهز للتحويل')
+        show_ok(`تم تحميل: ${entry.file_name}`)
+      } catch (e) {
+        entry.status = 'error'
+        entry.error = String(e?.message ?? e)
+        els.convert_btn.disabled = true
+        show_warn(`فشل تحميل ${entry.file_name}: ${entry.error}`)
+        set_status('خطأ')
+      } finally {
+        refresh_preflight_ui()
+      }
     }
 
     const parse_raw_toc = () => {
@@ -1380,14 +1647,116 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       return items
     }
 
-    els.bok_file.addEventListener('change', () => {
-      els.analyze_btn.disabled = !els.bok_file.files?.[0]
+    const update_batch_btn_label = () => {
+      els.batch_convert_btn.textContent = els.download_each_mode.checked ? 'تحويل دفعة (تنزيل مباشر)' : 'تحويل دفعة (ZIP)'
+    }
+
+    const reset_log = () => {
+      log_lines.length = 0
+      log('---')
+    }
+
+    const disable_primary_actions = () => {
+      els.analyze_btn.disabled = true
+      els.analyze_all_btn.disabled = true
       els.convert_btn.disabled = true
-      if (els.bok_file.files?.[0]) show_warn('اضغط "تحليل" لاستخراج الجداول والأعمدة.')
+      els.batch_convert_btn.disabled = true
+    }
+
+    const sync_primary_buttons = () => {
+      const count = els.bok_file.files?.length ?? 0
+      const has_files = count > 0
+      const can_convert = has_files && !!current_file
+      const active = analysis_results[active_book_index]
+      const blocked_by_preflight = analysis_results.length && (!active || active.status === 'error')
+      els.analyze_btn.disabled = !has_files
+      els.analyze_all_btn.disabled = !has_files
+      els.batch_convert_btn.disabled = count < 2
+      els.convert_btn.disabled = !can_convert || blocked_by_preflight
+    }
+
+    const make_error_analysis_result = (file, error) => ({
+      key: make_file_key(file),
+      file,
+      file_name: file.name,
+      status: 'error',
+      error: String(error?.message ?? error),
+      title: '',
+      author: '',
+      tables_count: 0,
+      content_table: '',
+      selection: null,
     })
 
-    els.content_table.addEventListener('change', update_content_columns_ui)
-    els.toc_table.addEventListener('change', update_toc_columns_ui)
+    const load_book_and_sync = async index => {
+      await load_book_by_index(index)
+      sync_primary_buttons()
+    }
+
+    const refresh_analysis_for_current_file = file => {
+      if (!analysis_results.length) return
+      if (analysis_signature !== files_signature(selected_files())) return
+      const idx = analysis_results.findIndex(item => item.key === make_file_key(file))
+      if (idx < 0) return
+      analysis_results[idx] = snapshot_current_analysis(file)
+      active_book_index = idx
+      refresh_preflight_ui()
+    }
+
+    els.bok_file.addEventListener('change', () => {
+      analysis_results = []
+      analysis_signature = ''
+      active_book_index = -1
+      current_file = null
+      refresh_preflight_ui()
+      sync_primary_buttons()
+      if (els.bok_file.files?.length) show_warn('اضغط "تحليل كل الملفات" للمعاينة المسبقة أو "تحليل" لملف واحد.')
+    })
+
+    els.content_table.addEventListener('change', () => {
+      update_content_columns_ui()
+      persist_active_book_selection()
+    })
+    els.toc_table.addEventListener('change', () => {
+      update_toc_columns_ui()
+      persist_active_book_selection()
+    })
+
+    ;[
+      els.content_text_col,
+      els.content_id_col,
+      els.content_page_col,
+      els.content_part_col,
+      els.toc_text_col,
+      els.toc_start_col,
+      els.toc_level_col,
+      els.chunk_size,
+      els.split_numbered,
+    ].forEach(control => {
+      control.addEventListener('change', persist_active_book_selection)
+    })
+
+    els.download_each_mode.addEventListener('change', update_batch_btn_label)
+
+    els.preflight_tbody.addEventListener('click', async event => {
+      const row = event.target.closest('tr[data-idx]')
+      if (!row) return
+      const index = Number(row.dataset.idx)
+      if (!Number.isFinite(index) || index === active_book_index) return
+      await load_book_and_sync(index)
+    })
+
+    els.book_prev_btn.addEventListener('click', async () => {
+      if (!analysis_results.length) return
+      const next = active_book_index <= 0 ? analysis_results.length - 1 : active_book_index - 1
+      await load_book_and_sync(next)
+    })
+
+    els.book_next_btn.addEventListener('click', async () => {
+      if (!analysis_results.length) return
+      const next = active_book_index >= analysis_results.length - 1 ? 0 : active_book_index + 1
+      await load_book_and_sync(next)
+    })
 
     els.analyze_btn.addEventListener('click', async () => {
       try {
@@ -1395,35 +1764,73 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
         if (!file) return
         els.analyze_btn.disabled = true
         els.convert_btn.disabled = true
-        log_lines.length = 0
-        log('---')
+        reset_log()
         await analyze_file(file)
+        refresh_analysis_for_current_file(file)
       } catch (e) {
         show_warn(`فشل التحليل: ${String(e?.message ?? e)}`)
         set_status('خطأ')
         log('ERR', String(e?.stack ?? e))
       } finally {
-        els.analyze_btn.disabled = !els.bok_file.files?.[0]
+        sync_primary_buttons()
+      }
+    })
+
+    els.analyze_all_btn.addEventListener('click', async () => {
+      const files = selected_files()
+      if (!files.length) return
+
+      try {
+        disable_primary_actions()
+        reset_log()
+        set_status('تحليل كل الملفات...')
+
+        analysis_signature = files_signature(files)
+        analysis_results = []
+        active_book_index = -1
+        refresh_preflight_ui()
+
+        for (let i = 0; i < files.length; i += 1) {
+          const file = files[i]
+          log(`[${i + 1}/${files.length}] تحليل ${file.name}`)
+          let result
+          try {
+            await analyze_file(file, { skip_success_message: true, enable_convert: false })
+            result = snapshot_current_analysis(file)
+          } catch (e) {
+            result = make_error_analysis_result(file, e)
+            log(`ERR: ${file.name} -> ${String(e?.message ?? e)}`)
+          }
+          analysis_results.push(result)
+          active_book_index = analysis_results.length - 1
+          refresh_preflight_ui()
+        }
+
+        const success_count = analysis_results.filter(item => item.status === 'ready').length
+        if (!success_count) {
+          show_warn('فشل تحليل جميع الملفات')
+          set_status('خطأ')
+        } else {
+          show_ok(`تم تحليل ${success_count} من ${files.length}. استخدم الأسهم أو الجدول للتنقل بين الكتب.`)
+          set_status('جاهز للتحويل')
+        }
+      } catch (e) {
+        show_warn(`فشل التحليل المسبق: ${String(e?.message ?? e)}`)
+        set_status('خطأ')
+        log('ERR', String(e?.stack ?? e))
+      } finally {
+        refresh_preflight_ui()
+        sync_primary_buttons()
       }
     })
 
     els.convert_btn.addEventListener('click', async () => {
       try {
+        persist_active_book_selection()
         els.convert_btn.disabled = true
         set_status('تحويل...')
-        const raw_toc = parse_raw_toc()
-        const toc_starts = raw_toc?.map(t => t.start) ?? null
-        const { pages, id_to_page_number, id_to_snippet } = await parse_pages(toc_starts)
-        const toc = map_toc(raw_toc, id_to_page_number, id_to_snippet) ?? auto_toc_from_pages(pages)
-        const { title, author } = extract_title_author()
-        const about = `<div>
-<h1>${escape_xml(title)}</h1>
-${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
-<p class="small">تم التحويل محليًا من ملف .bok داخل المتصفح.</p>
-</div>`
-        const info = { id: 0, title, author, about, toc }
-        set_status('بناء EPUB...')
-        const { blob, filename } = await build_epub(info, pages)
+        const fallback_name = current_file?.name ?? els.bok_file.files?.[0]?.name ?? ''
+        const { blob, filename } = await convert_current_mdb_to_epub(fallback_name)
         download_blob(blob, filename)
         show_ok(`تم إنشاء الملف: ${filename}`)
         set_status('تم')
@@ -1432,11 +1839,111 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
         set_status('خطأ')
         log('ERR', String(e?.stack ?? e))
       } finally {
-        els.convert_btn.disabled = false
+        sync_primary_buttons()
       }
     })
 
-    show_warn('اختر ملف .bok ثم اضغط "تحليل".')
+    els.batch_convert_btn.addEventListener('click', async () => {
+      const files = selected_files()
+      if (files.length < 2) {
+        show_warn('اختر ملفين أو أكثر للتحويل الدفعي.')
+        return
+      }
+
+      persist_active_book_selection()
+
+      const current_signature = files_signature(files)
+      const use_preflight = analysis_signature === current_signature && analysis_results.length === files.length
+      const items = use_preflight ? analysis_results : files.map(file => ({
+        key: make_file_key(file),
+        file,
+        file_name: file.name,
+        status: 'ready',
+        error: '',
+        selection: null,
+      }))
+
+      const download_each = !!els.download_each_mode.checked
+      const uniquify_name = (name, seen) => {
+        if (!seen.has(name)) return name
+        const dot = name.lastIndexOf('.')
+        const base = dot > 0 ? name.slice(0, dot) : name
+        const ext = dot > 0 ? name.slice(dot) : ''
+        let i = 2
+        while (seen.has(`${base} (${i})${ext}`)) i += 1
+        return `${base} (${i})${ext}`
+      }
+
+      try {
+        disable_primary_actions()
+        reset_log()
+        set_status(download_each ? 'تحويل دفعي (تنزيل مباشر)...' : 'تحويل دفعي...')
+
+        await load_libs()
+        const used_names = new Set()
+        const batch_zip = download_each ? null : new JSZip()
+        let success_count = 0
+
+        for (let i = 0; i < items.length; i += 1) {
+          const item = items[i]
+          if (item.status === 'error') {
+            log(`[${i + 1}/${items.length}] SKIP: ${item.file_name} (خطأ في التحليل)`)
+            continue
+          }
+
+          const file = item.file
+          log(`[${i + 1}/${items.length}] ${file.name}`)
+          try {
+            await analyze_file(file, { skip_success_message: true, enable_convert: false })
+            if (item.selection) apply_book_selection(item.selection)
+            const { blob, filename } = await convert_current_mdb_to_epub(file.name)
+            const out_name = uniquify_name(filename, used_names)
+            used_names.add(out_name)
+
+            if (download_each) download_blob(blob, out_name)
+            else batch_zip.file(out_name, blob)
+
+            if (use_preflight) active_book_index = i
+            success_count += 1
+            log(`OK: ${out_name}`)
+          } catch (e) {
+            log(`ERR: ${file.name} -> ${String(e?.message ?? e)}`)
+          }
+        }
+
+        if (!success_count) throw new Error('فشل تحويل جميع الملفات')
+
+        if (download_each) {
+          show_ok(`تم تنزيل ${success_count} ملف EPUB مباشرة`)
+          set_status('تم')
+        } else {
+          const ts = new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)
+          const zip_name = sanitize_filename(`bok-to-epub-batch-${ts}.zip`)
+          set_status('بناء ZIP...')
+          const zip_blob = await batch_zip.generateAsync({
+            type: 'blob',
+            mimeType: 'application/zip',
+            compression: 'DEFLATE',
+            compressionOptions: { level: 9 },
+          })
+          download_blob(zip_blob, zip_name)
+          show_ok(`تم تحويل ${success_count} ملف وتنزيل ${zip_name}`)
+          set_status('تم')
+        }
+      } catch (e) {
+        show_warn(`فشل التحويل الدفعي: ${String(e?.message ?? e)}`)
+        set_status('خطأ')
+        log('ERR', String(e?.stack ?? e))
+      } finally {
+        refresh_preflight_ui()
+        sync_primary_buttons()
+      }
+    })
+
+    update_batch_btn_label()
+    refresh_preflight_ui()
+    sync_primary_buttons()
+    show_warn('اختر ملف .bok واحدًا أو أكثر ثم اضغط "تحليل كل الملفات".')
     log('Ready')
   </script>
 </body>
