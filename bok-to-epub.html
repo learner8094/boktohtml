@@ -389,6 +389,28 @@
     .results_table tbody tr.error {
       background: rgba(177, 50, 30, .08)
     }
+
+    .options_stack {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(240px, 1fr));
+      gap: 10px 14px;
+      max-width: 760px;
+      margin-inline-end: auto
+    }
+
+    .options_stack>* {
+      width: 100%
+    }
+
+    .options_stack .btns {
+      grid-column: 1 / -1
+    }
+
+    @media (max-width: 740px) {
+      .options_stack {
+        grid-template-columns: 1fr
+      }
+    }
   </style>
 </head>
 
@@ -430,17 +452,25 @@
 
           <div style="height:10px"></div>
 
-          <div class="row">
+          <div class="options_stack">
             <div class="btns">
               <button id="analyze_all_btn" class="primary" disabled>تحليل كل الملفات</button>
             </div>
-            <label class="check grow">
+            <label class="check">
               <input id="download_each_mode" type="checkbox" checked />
-              <span>في التحويل الجماعي: تنزيل كل ملف مباشرة (بدون ZIP)</span>
+              <span>تنزيل كل ملف مباشرة في التحويل الجماعي</span>
             </label>
-            <label class="check grow">
+            <label class="check">
               <input id="include_pdf" type="checkbox" />
               <span>إنشاء PDF مع EPUB (اختياري)</span>
+            </label>
+            <label class="check">
+              <input id="include_author_filename" type="checkbox" />
+              <span>إضافة المؤلف لاسم الملف</span>
+            </label>
+            <label class="check">
+              <input id="include_toc_page" type="checkbox" />
+              <span>إدراج صفحة الفهرس ضمن صفحات الكتاب</span>
             </label>
             <label>
               خط PDF
@@ -616,6 +646,8 @@
       batch_convert_btn: $('#batch_convert_btn'),
       download_each_mode: $('#download_each_mode'),
       include_pdf: $('#include_pdf'),
+      include_author_filename: $('#include_author_filename'),
+      include_toc_page: $('#include_toc_page'),
       pdf_font: $('#pdf_font'),
       book_prev_btn: $('#book_prev_btn'),
       book_next_btn: $('#book_next_btn'),
@@ -679,6 +711,12 @@
         .replace(/[/:*?"<>|]+/g, '_')
         .replace(/\s+/g, ' ')
         .trim()
+
+    const make_output_filename = (title, author, ext) => {
+      const include_author = els.include_author_filename.checked
+      const base = include_author && author ? `${title} - ${author}` : title
+      return sanitize_filename(`${base || 'book'}.${ext}`)
+    }
 
     const lower = v => String(v ?? '').toLowerCase()
     const looks_like_html = text => /<\/?(p|br|div|span|h[1-6]|font)\b/i.test(text)
@@ -1274,6 +1312,7 @@
 
       let title = override_title || ''
       let author = override_author || ''
+      let card = ''
 
       const meta_table = get_meta_guess()
       if (meta_table) {
@@ -1290,11 +1329,23 @@
 
         if (!title) title = pick(['title', 'book', 'bk', 'name'], '')
         if (!author) author = pick(['author', 'auth'], '')
+        if (!card) card = pick(['betaka', 'card', 'about'], '')
+      }
+
+      if (!card) {
+        const table_with_card = table_names.find(t => (table_meta.get(t)?.column_names ?? []).some(c => lower(c).includes('betaka')))
+        if (table_with_card) {
+          const rows = read_table_preview(table_with_card, 3)
+          const row = rows[0] ?? {}
+          const keys = Object.keys(row)
+          const key = keys.find(k => lower(k).includes('betaka')) ?? ''
+          if (key) card = decode_value(row[key]).trim()
+        }
       }
 
       const default_name = fallback_name || els.bok_file.files?.[0]?.name || 'كتاب'
       if (!title) title = default_name.replace(/\.(bok|mdb|accdb)$/i, '')
-      return { title: title.trim(), author: author.trim() }
+      return { title: title.trim(), author: author.trim(), card: card.trim() }
     }
 
     const sanitize_html_for_xhtml = html => {
@@ -1356,7 +1407,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       const title = info.title || `الشاملة ${info.id ?? 0}`
       const author = info.author || ''
       const identifier = `urn:shamela_bok:${info.id ?? 0}`
-      const filename = sanitize_filename(`${title}${author ? ` - ${author}` : ''}.epub`)
+      const filename = make_output_filename(title, author, 'epub')
 
       zip.file('mimetype', 'application/epub+zip', { compression: 'STORE' })
 
@@ -1469,6 +1520,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
         .map(entry => `<item id="p${entry.page.page_number}" href="text/${entry.file_name}" media-type="application/xhtml+xml" />`)
         .join('')
       const spine_items = page_entries.map(entry => `<itemref idref="p${entry.page.page_number}" />`).join('')
+      const include_toc_page = els.include_toc_page.checked ? '<itemref idref="nav" />' : ''
 
       zip.folder('OEBPS')?.file(
         'content.opf',
@@ -1490,8 +1542,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
     ${manifest_items}
   </manifest>
   <spine toc="ncx" page-progression-direction="rtl">
-    <itemref idref="info" />
-    <itemref idref="nav" />
+    ${include_toc_page}
     ${spine_items}
   </spine>
 </package>
@@ -1543,7 +1594,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       await load_pdf_libs()
       const title = info.title || `الشاملة ${info.id ?? 0}`
       const author = info.author || ''
-      const filename = sanitize_filename(`${title}${author ? ` - ${author}` : ''}.pdf`)
+      const filename = make_output_filename(title, author, 'pdf')
       const requested_font = els.pdf_font.value === 'AmiriQuran' ? 'AmiriQuran' : 'Cairo'
       if (requested_font === 'AmiriQuran') {
         try {
@@ -1698,7 +1749,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
           const snippet = decode_value(row?.[tcol]).replace(/\s+/g, ' ').trim().slice(0, 120)
           const idv = idc ? row?.[idc] : ''
           const pv = pc ? row?.[pc] : ''
-          const partv = partc ? row?.[partc] : ''
+          const partv = partc ? decode_value(row?.[partc]).trim() : ''
           const hno = hno_col ? row?.[hno_col] : ''
           log(`Row ${idx + 1}: id=${idv} page=${pv} part=${partv}${hno_col ? ` hno=${hno}` : ''} text="${snippet}"`)
         })
@@ -1718,11 +1769,12 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       const toc_starts = raw_toc?.map(t => t.start) ?? null
       const { pages, id_to_page_number, id_to_snippet } = await parse_pages(toc_starts)
       const toc = map_toc(raw_toc, id_to_page_number, id_to_snippet) ?? auto_toc_from_pages(pages)
-      const { title, author } = extract_title_author(fallback_name)
+      const { title, author, card } = extract_title_author(fallback_name)
+      const card_html = card ? sanitize_html_for_xhtml(to_html_paragraphs(card).join('')) : ''
       const about = `<div>
 <h1>${escape_xml(title)}</h1>
 ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
-<p class="small">تم التحويل محليًا من ملف .bok داخل المتصفح إلى EPUB مع PDF اختياري.</p>
+${card_html}
 </div>`
       const info = { id: 0, title, author, about, toc }
       return { info, pages }
@@ -1785,9 +1837,10 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
       if (!toc_table) return null
       const toc_text_col = els.toc_text_col.value
       const toc_start_col = els.toc_start_col.value
+      const toc_level_col = els.toc_level_col.value || ''
       if (!toc_text_col || !toc_start_col) return null
 
-      log(`TOC table: ${toc_table} text=${toc_text_col} start=${toc_start_col}`)
+      log(`TOC table: ${toc_table} text=${toc_text_col} start=${toc_start_col}${toc_level_col ? ` level=${toc_level_col}` : ''}`)
       const table = mdb.getTable(toc_table)
       const rows = table.getData()
       const seen = new Set()
@@ -1802,12 +1855,24 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
       for (const row of rows) {
         const text = decode_value(row?.[toc_text_col]).trim()
         const start = to_int(row?.[toc_start_col])
+        const level = toc_level_col ? to_int(row?.[toc_level_col]) : null
         if (!text || start == null) continue
         if (/^الجزء\s+/.test(text)) continue
-        const key = `${start}|${text}`
+        const key = `${start}|${level ?? ''}|${text}`
         if (seen.has(key)) continue
         seen.add(key)
-        items.push({ start, text })
+        items.push({ start, text, level })
+      }
+
+      const levels = items.map(it => it.level).filter(v => typeof v === 'number' && Number.isFinite(v))
+      if (levels.length) {
+        const min = Math.min(...levels)
+        const shift = min <= 0 ? 1 - min : min > 1 ? 1 - min : 0
+        if (shift) {
+          items.forEach(it => {
+            if (typeof it.level === 'number' && Number.isFinite(it.level)) it.level += shift
+          })
+        }
       }
 
       return items.length ? items : null
@@ -1852,9 +1917,12 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
 
           const idv = id_col ? to_int(row?.[id_col]) : null
           const pv = page_col ? to_int(row?.[page_col]) : null
-          const partv = part_col ? to_int(row?.[part_col]) : null
+          const part_raw = part_col ? row?.[part_col] : null
+          const partv = part_col ? to_int(part_raw) : null
+          const part_text = part_col && partv == null ? decode_value(part_raw).replace(/\u0000/g, '').trim() : ''
+          const part_display = partv != null ? String(partv) : part_text || ''
 
-          const footer = [partv != null ? `الجزء: ${partv}` : null, pv ? `الصفحة: ${pv}` : null].filter(Boolean).join(' - ')
+          const footer = [part_display ? `الجزء: ${part_display}` : null, pv ? `الصفحة: ${pv}` : null].filter(Boolean).join(' - ')
 
           let chunks = []
           if (!split_numbered || looks_like_html(raw)) {
@@ -1942,7 +2010,7 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
       const items = []
       const seen = new Set()
       for (const entry of raw_toc) {
-        const page_number = id_to_page_number.get(entry.start)
+        const page_number = id_to_page_number.get(entry.start) ?? (entry.start === 0 ? 1 : null)
         if (typeof page_number !== 'number' || !page_number) continue
         let text = entry.text
         const snippet = id_to_snippet?.get?.(entry.start) ?? ''
@@ -1951,14 +2019,34 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
           if (snippet.includes(alt)) text = alt
         }
 
-        const key = `${page_number}|${text}`
+        const key = `${page_number}|${entry.level ?? ''}|${text}`
         if (seen.has(key)) continue
         seen.add(key)
-        items.push({ text, page: page_number, anchor: `toc_${entry.start}` })
+        items.push({ text, page: page_number, anchor: entry.start === 0 ? '' : `toc_${entry.start}`, level: entry.level })
       }
       if (!items.length) return null
-      items.sort((a, b) => a.page - b.page)
-      return items
+
+      const has_levels = items.some(it => typeof it.level === 'number' && Number.isFinite(it.level))
+      if (!has_levels) {
+        items.sort((a, b) => a.page - b.page)
+        return items.map(({ level, ...rest }) => rest)
+      }
+
+      const root = []
+      const stack = [{ level: 0, children: root }]
+      const get_level = it => (typeof it.level === 'number' && Number.isFinite(it.level) && it.level > 0 ? it.level : 1)
+
+      for (const it of items) {
+        const level = get_level(it)
+        while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop()
+        const parent = stack[stack.length - 1]
+        const entry = { text: it.text, page: it.page, anchor: it.anchor }
+        const children = []
+        parent.children.push([entry, children])
+        stack.push({ level, children })
+      }
+
+      return root
     }
 
     const update_batch_btn_label = () => {
@@ -2040,19 +2128,19 @@ ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
       persist_active_book_selection()
     })
 
-    ;[
-      els.content_text_col,
-      els.content_id_col,
-      els.content_page_col,
-      els.content_part_col,
-      els.toc_text_col,
-      els.toc_start_col,
-      els.toc_level_col,
-      els.chunk_size,
-      els.split_numbered,
-    ].forEach(control => {
-      control.addEventListener('change', persist_active_book_selection)
-    })
+      ;[
+        els.content_text_col,
+        els.content_id_col,
+        els.content_page_col,
+        els.content_part_col,
+        els.toc_text_col,
+        els.toc_start_col,
+        els.toc_level_col,
+        els.chunk_size,
+        els.split_numbered,
+      ].forEach(control => {
+        control.addEventListener('change', persist_active_book_selection)
+      })
 
     els.download_each_mode.addEventListener('change', update_batch_btn_label)
     els.include_pdf.addEventListener('change', update_pdf_font_ui)
