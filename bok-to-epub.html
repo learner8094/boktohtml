@@ -411,6 +411,157 @@
         grid-template-columns: 1fr
       }
     }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(15, 23, 42, .55);
+      backdrop-filter: blur(10px);
+      z-index: 1000;
+      display: none;
+      padding: 18px;
+      overflow: auto
+    }
+
+    .modal.open {
+      display: block
+    }
+
+    .modal_panel {
+      height: calc(100vh - 36px);
+      max-width: 1180px;
+      margin: 0 auto;
+      background: linear-gradient(180deg, rgba(255, 255, 255, .96), rgba(255, 255, 255, .86));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, .35);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      min-height: 0
+    }
+
+    .modal_head {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: rgba(255, 247, 238, .7);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px
+    }
+
+    .modal_body {
+      padding: 14px;
+      min-height: 0
+    }
+
+    .preview_grid {
+      height: 100%;
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 12px;
+      min-height: 0
+    }
+
+    @media (max-width: 980px) {
+      .preview_grid {
+        grid-template-columns: 1fr
+      }
+    }
+
+    .preview_main,
+    .preview_toc {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, .75);
+      box-shadow: 0 10px 24px rgba(0, 0, 0, .06);
+      overflow: hidden;
+      display: grid;
+      min-height: 0
+    }
+
+    .preview_toc {
+      grid-template-rows: auto 1fr
+    }
+
+    .preview_toc .top {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px
+    }
+
+    .toc_tree {
+      padding: 10px 12px;
+      overflow: auto;
+      font-size: 13px;
+      min-height: 0
+    }
+
+    .toc_tree ol {
+      margin: 0;
+      padding: 0 18px 0 0
+    }
+
+    .toc_tree li {
+      margin: 6px 0
+    }
+
+    .toc_tree a {
+      color: inherit;
+      text-decoration: none
+    }
+
+    .toc_tree a:hover {
+      text-decoration: underline
+    }
+
+    .preview_main {
+      grid-template-rows: auto auto 1fr;
+    }
+
+    .preview_controls {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap
+    }
+
+    .preview_controls input[type="number"] {
+      width: 110px
+    }
+
+    .preview_status {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 12px
+    }
+
+    .preview_content {
+      padding: 14px;
+      overflow: auto;
+      line-height: 1.7;
+      min-height: 0
+    }
+
+    .modal button:focus-visible,
+    .modal a:focus-visible,
+    .modal input:focus-visible,
+    .modal [tabindex="0"]:focus-visible {
+      outline: 2px solid var(--accent2);
+      outline-offset: 2px
+    }
+
+    .toc_tree a[aria-current="true"] {
+      text-decoration: underline;
+      color: var(--accent2)
+    }
   </style>
 </head>
 
@@ -434,6 +585,7 @@
           </div>
           <div class="btns head_actions">
             <button id="analyze_btn" class="primary" disabled>تحليل</button>
+            <button id="preview_btn" class="primary" disabled>استعراض</button>
             <button id="convert_btn" class="good" disabled>تحويل وتنزيل</button>
             <button id="batch_convert_btn" class="good" disabled>تحويل مجموعة (ZIP)</button>
           </div>
@@ -634,14 +786,56 @@
     </div>
   </div>
 
+  <div id="preview_modal" class="modal" aria-hidden="true" role="dialog" aria-modal="true"
+    aria-labelledby="preview_modal_title">
+    <div class="modal_panel" tabindex="-1">
+      <div class="modal_head">
+        <div>
+          <div class="h" id="preview_modal_title">استعراض النص</div>
+          <div class="hint" id="preview_title">-</div>
+        </div>
+        <div class="btns">
+          <button id="preview_load_more_btn">تحميل المزيد</button>
+          <button id="preview_close_btn" class="bad">إغلاق</button>
+        </div>
+      </div>
+      <div class="modal_body">
+        <div class="preview_grid">
+          <div class="preview_main">
+            <div class="preview_controls">
+              <button id="preview_prev_btn">السابق</button>
+              <label class="small" style="display:flex;flex-direction:row;align-items:center;gap:8px">
+                صفحة
+                <input id="preview_page_input" type="number" min="1" step="1" />
+                <span id="preview_page_total" class="small">/ ?</span>
+              </label>
+              <button id="preview_next_btn">التالي</button>
+            </div>
+            <div id="preview_status" class="preview_status" aria-live="polite">-</div>
+            <div id="preview_content" class="preview_content" tabindex="0" aria-label="نص الصفحة"></div>
+          </div>
+          <aside class="preview_toc">
+            <div class="top">
+              <div class="small">الفهرس</div>
+              <div class="small" id="preview_toc_status" aria-live="polite">-</div>
+            </div>
+            <div id="preview_toc" class="toc_tree" tabindex="0" aria-label="فهرس"></div>
+          </aside>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script type="module">
     const $ = sel => document.querySelector(sel)
 
     const els = {
+      wrap: $('.wrap'),
       bok_file: $('#bok_file'),
       db_password: $('#db_password'),
       analyze_btn: $('#analyze_btn'),
       analyze_all_btn: $('#analyze_all_btn'),
+      preview_btn: $('#preview_btn'),
       convert_btn: $('#convert_btn'),
       batch_convert_btn: $('#batch_convert_btn'),
       download_each_mode: $('#download_each_mode'),
@@ -649,6 +843,19 @@
       include_author_filename: $('#include_author_filename'),
       include_toc_page: $('#include_toc_page'),
       pdf_font: $('#pdf_font'),
+      preview_modal: $('#preview_modal'),
+      preview_modal_panel: $('#preview_modal .modal_panel'),
+      preview_title: $('#preview_title'),
+      preview_close_btn: $('#preview_close_btn'),
+      preview_load_more_btn: $('#preview_load_more_btn'),
+      preview_prev_btn: $('#preview_prev_btn'),
+      preview_next_btn: $('#preview_next_btn'),
+      preview_page_input: $('#preview_page_input'),
+      preview_page_total: $('#preview_page_total'),
+      preview_status: $('#preview_status'),
+      preview_toc: $('#preview_toc'),
+      preview_toc_status: $('#preview_toc_status'),
+      preview_content: $('#preview_content'),
       book_prev_btn: $('#book_prev_btn'),
       book_next_btn: $('#book_next_btn'),
       book_nav_label: $('#book_nav_label'),
@@ -718,6 +925,24 @@
       return sanitize_filename(`${base || 'book'}.${ext}`)
     }
 
+    const nest_by_level = (items, make_entry) => {
+      if (!items?.length) return []
+      const root = []
+      const stack = [{ level: 0, children: root }]
+      const get_level = it => (typeof it.level === 'number' && Number.isFinite(it.level) && it.level > 0 ? it.level : 1)
+
+      for (const it of items) {
+        const level = get_level(it)
+        while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop()
+        const parent = stack[stack.length - 1]
+        const children = []
+        parent.children.push([make_entry(it), children])
+        stack.push({ level, children })
+      }
+
+      return root
+    }
+
     const lower = v => String(v ?? '').toLowerCase()
     const looks_like_html = text => /<\/?(p|br|div|span|h[1-6]|font)\b/i.test(text)
 
@@ -725,6 +950,12 @@
       String(value)
         .replace(/[\u0660-\u0669]/g, d => String(d.charCodeAt(0) - 0x0660))
         .replace(/[\u06F0-\u06F9]/g, d => String(d.charCodeAt(0) - 0x06f0))
+
+    const to_int = v => {
+      if (typeof v === 'number') return v
+      if (typeof v === 'string' && /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)) return Number(digits_to_ascii(v))
+      return null
+    }
 
     const CP1256_TABLE = [
       0x20AC, 0x067E, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
@@ -1846,12 +2077,6 @@ ${card_html}
       const seen = new Set()
       const items = []
 
-      const to_int = v => {
-        if (typeof v === 'number') return v
-        if (typeof v === 'string' && /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)) return Number(digits_to_ascii(v))
-        return null
-      }
-
       for (const row of rows) {
         const text = decode_value(row?.[toc_text_col]).trim()
         const start = to_int(row?.[toc_start_col])
@@ -1878,12 +2103,12 @@ ${card_html}
       return items.length ? items : null
     }
 
-    const parse_pages = async (toc_starts = null) => {
+    const create_pages_reader = (toc_starts = null, { log_batches = true } = {}) => {
       const content_table = els.content_table.value
       const text_col = els.content_text_col.value
       if (!content_table || !text_col) throw new Error('حدد جدول المحتوى وعمود النص')
 
-      const id_col = els.content_id_col.value || null
+      let id_col = els.content_id_col.value || null
       const page_col = els.content_page_col.value || null
       const part_col = els.content_part_col.value || null
       const chunk_size = Math.max(200, Math.min(20000, Number(els.chunk_size.value) || 2000))
@@ -1891,97 +2116,160 @@ ${card_html}
 
       const table = mdb.getTable(content_table)
       const row_count = table.rowCount
+
+      if (toc_starts?.length && !id_col) {
+        const cols = table_meta.get(content_table)?.column_names ?? []
+        const toc_start_col = els.toc_start_col.value || ''
+        const hint = lower(toc_start_col)
+        const toc_start_is_page = hint.includes('page') || hint.includes('صفحة') || hint === 'p'
+
+        const same_name = toc_start_col ? cols.find(c => lower(c).trim() === lower(toc_start_col).trim()) : null
+        const excluded = c => !c || c === text_col || c === page_col || c === part_col
+        if (same_name && !excluded(same_name)) id_col = same_name
+        else if (!toc_start_is_page) {
+          const by_name = cols.find(c => lower(c).trim() === 'id') ?? cols.find(c => lower(c).trim() === 'na') ?? null
+          if (by_name && !excluded(by_name)) id_col = by_name
+          else {
+            const starts_set = new Set(toc_starts.filter(n => typeof n === 'number' && Number.isFinite(n) && n > 0))
+            const sample = table.getData({ rowOffset: 0, rowLimit: Math.min(400, row_count) })
+            const candidates = cols.filter(c => !excluded(c))
+            const score = col => sample.reduce((acc, r) => acc + (starts_set.has(to_int(r?.[col])) ? 1 : 0), 0)
+            const best = candidates.map(c => [c, score(c)]).sort((a, b) => b[1] - a[1])[0]
+            if (best?.[1] > 0) id_col = best[0]
+          }
+        }
+      }
+
+      const has_page_col = !!page_col
+      const has_id_col = !!id_col
       log(`Content table: ${content_table} rows=${row_count} text_col=${text_col} id_col=${id_col ?? '-'} page_col=${page_col ?? '-'} part_col=${part_col ?? '-'}`)
-      set_status('قراءة المحتوى...')
 
       const pages = []
       const id_to_page_number = new Map()
       const id_to_snippet = new Map()
-
-      const to_int = v => {
-        if (typeof v === 'number') return v
-        if (typeof v === 'string' && /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)) return Number(digits_to_ascii(v))
-        return null
-      }
+      const page_value_to_page_number = new Map()
 
       const starts = toc_starts ? new Set(toc_starts) : null
       const is_numbered = text => /^(?:[0-9\u0660-\u0669\u06F0-\u06F9]{1,4})\s*[-–—]\s+/.test(text)
 
-      for (let offset = 0; offset < row_count; offset += chunk_size) {
-        const batch = table.getData({ rowOffset: offset, rowLimit: chunk_size })
-        log(`Batch ${offset}..${Math.min(row_count, offset + chunk_size)} (${batch.length})`)
-        for (let i = 0; i < batch.length; i += 1) {
-          const row = batch[i]
-          const raw = decode_value(row?.[text_col]).replace(/\u0000/g, '').trim()
-          if (!raw) continue
+      let offset = 0
 
-          const idv = id_col ? to_int(row?.[id_col]) : null
-          const pv = page_col ? to_int(row?.[page_col]) : null
-          const part_raw = part_col ? row?.[part_col] : null
-          const partv = part_col ? to_int(part_raw) : null
-          const part_text = part_col && partv == null ? decode_value(part_raw).replace(/\u0000/g, '').trim() : ''
-          const part_display = partv != null ? String(partv) : part_text || ''
+      const load_more = async ({ max_pages = 80, until_id = null, until_page = null } = {}) => {
+        const start_pages = pages.length
+        const max_total = start_pages + Math.max(1, Number(max_pages) || 1)
 
-          const footer = [part_display ? `الجزء: ${part_display}` : null, pv ? `الصفحة: ${pv}` : null].filter(Boolean).join(' - ')
+        const need_more = () => {
+          if (until_id != null) return !id_to_page_number.has(until_id)
+          if (until_page != null) return !page_value_to_page_number.has(until_page)
+          return true
+        }
 
-          let chunks = []
-          if (!split_numbered || looks_like_html(raw)) {
-            const paras = to_html_paragraphs(raw)
-            if (!paras.length) continue
-            chunks = [paras]
-          } else {
-            const parts = split_plain_text(raw)
-            let current = []
-            for (const part of parts) {
-              const t = String(part).trim()
-              if (!t) continue
-              const split_here = current.length && (is_heading_text(t) || is_numbered(t))
-              if (split_here) {
-                chunks.push(current)
-                current = [t]
-              } else {
-                current.push(t)
+        while (offset < row_count && pages.length < max_total && need_more()) {
+          const batch_offset = offset
+          const batch = table.getData({ rowOffset: batch_offset, rowLimit: chunk_size })
+          if (log_batches) log(`Batch ${batch_offset}..${Math.min(row_count, batch_offset + chunk_size)} (${batch.length})`)
+          if (!batch.length) {
+            offset = row_count
+            break
+          }
+          let stop = false
+
+          for (let i = 0; i < batch.length; i += 1) {
+            offset = batch_offset + i + 1
+            const row = batch[i]
+            const raw = decode_value(row?.[text_col]).replace(/\u0000/g, '').trim()
+            if (!raw) continue
+
+            const idv = id_col ? to_int(row?.[id_col]) : null
+            const pv = page_col ? to_int(row?.[page_col]) : null
+            const part_raw = part_col ? row?.[part_col] : null
+            const partv = part_col ? to_int(part_raw) : null
+            const part_text = part_col && partv == null ? decode_value(part_raw).replace(/\u0000/g, '').trim() : ''
+            const part_display = partv != null ? String(partv) : part_text || ''
+
+            const footer = [part_display ? `الجزء: ${part_display}` : null, pv ? `الصفحة: ${pv}` : null].filter(Boolean).join(' - ')
+
+            let chunks = []
+            if (!split_numbered || looks_like_html(raw)) {
+              const paras = to_html_paragraphs(raw)
+              if (!paras.length) continue
+              chunks = [paras]
+            } else {
+              const parts = split_plain_text(raw)
+              let current = []
+              for (const part of parts) {
+                const t = String(part).trim()
+                if (!t) continue
+                const split_here = current.length && (is_heading_text(t) || is_numbered(t))
+                if (split_here) {
+                  chunks.push(current)
+                  current = [t]
+                } else {
+                  current.push(t)
+                }
+              }
+              if (current.length) chunks.push(current)
+              chunks = chunks.map(list => list.map(p => `<p>${escape_xml(p)}</p>`))
+              if (!chunks.length) continue
+            }
+
+            let anchor_chunk_index = 0
+            if (starts && idv != null && starts.has(idv)) {
+              const idx = chunks.findIndex(c => {
+                const first = c?.[0]?.replace(/<[^>]+>/g, '').trim() ?? ''
+                return is_heading_text(first)
+              })
+              if (idx >= 0) anchor_chunk_index = idx
+            }
+
+            chunks.forEach((paras, chunk_index) => {
+              const out = []
+              if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) out.push(`<a id="toc_${idv}"></a>`)
+              out.push(...paras)
+              const body = `<div>${out.join('')}</div>`
+              const text_html = footer ? `${body}<div class="text-center">${footer}</div>` : body
+              const page_number = pages.length + 1
+              pages.push({ page_number, page: pv ?? 0, part: partv, text_html: sanitize_html_for_xhtml(text_html) })
+
+              if (idv != null && (!starts || !starts.has(idv) || chunk_index === anchor_chunk_index)) id_to_page_number.set(idv, page_number)
+              if (pv != null && pv > 0 && !page_value_to_page_number.has(pv)) page_value_to_page_number.set(pv, page_number)
+            })
+
+            if (idv != null && !id_to_snippet.has(idv)) {
+              const flat = chunks.flat()
+              const p0 = flat[0]?.replace(/<[^>]+>/g, ' ')?.replace(/\s+/g, ' ')?.trim() ?? ''
+              const p1 = flat[1]?.replace(/<[^>]+>/g, ' ')?.replace(/\s+/g, ' ')?.trim() ?? ''
+              id_to_snippet.set(idv, `${p0}\n${p1}`.trim())
+            }
+
+            if (pages.length >= max_total) {
+              const hit = (!until_id && !until_page) || (until_id && id_to_page_number.has(until_id)) || (until_page && page_value_to_page_number.has(until_page))
+              if (hit) {
+                stop = true
+                break
               }
             }
-            if (current.length) chunks.push(current)
-            chunks = chunks.map(list => list.map(p => `<p>${escape_xml(p)}</p>`))
-            if (!chunks.length) continue
           }
 
-          let anchor_chunk_index = 0
-          if (starts && idv != null && starts.has(idv)) {
-            const idx = chunks.findIndex(c => {
-              const first = c?.[0]?.replace(/<[^>]+>/g, '').trim() ?? ''
-              return is_heading_text(first)
-            })
-            if (idx >= 0) anchor_chunk_index = idx
-          }
-
-          chunks.forEach((paras, chunk_index) => {
-            const out = []
-            if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) out.push(`<a id="toc_${idv}"></a>`)
-            out.push(...paras)
-            const body = `<div>${out.join('')}</div>`
-            const text_html = footer ? `${body}<div class="text-center">${footer}</div>` : body
-            const page_number = pages.length + 1
-            pages.push({ page_number, page: pv ?? 0, part: partv, text_html: sanitize_html_for_xhtml(text_html) })
-
-            if (idv != null && (!starts || !starts.has(idv) || chunk_index === anchor_chunk_index)) id_to_page_number.set(idv, page_number)
-          })
-
-          if (idv != null && !id_to_snippet.has(idv)) {
-            const flat = chunks.flat()
-            const p0 = flat[0]?.replace(/<[^>]+>/g, ' ')?.replace(/\s+/g, ' ')?.trim() ?? ''
-            const p1 = flat[1]?.replace(/<[^>]+>/g, ' ')?.replace(/\s+/g, ' ')?.trim() ?? ''
-            id_to_snippet.set(idv, `${p0}\n${p1}`.trim())
-          }
+          if (stop) break
+          await new Promise(r => setTimeout(r, 0))
         }
-        await new Promise(r => setTimeout(r, 0))
+
+        return { done: offset >= row_count, loaded_pages: pages.length, added_pages: pages.length - start_pages }
       }
 
-      log(`Pages built: ${pages.length}`)
-      els.sum_pages.textContent = String(pages.length)
-      return { pages, id_to_page_number, id_to_snippet }
+      const progress = () => ({ done: offset >= row_count, offset, row_count, pages: pages.length })
+
+      return { pages, id_to_page_number, id_to_snippet, page_value_to_page_number, has_id_col, has_page_col, load_more, progress }
+    }
+
+    const parse_pages = async (toc_starts = null) => {
+      set_status('قراءة المحتوى...')
+      const reader = create_pages_reader(toc_starts, { log_batches: true })
+      await reader.load_more({ max_pages: Number.POSITIVE_INFINITY })
+      log(`Pages built: ${reader.pages.length}`)
+      els.sum_pages.textContent = String(reader.pages.length)
+      return { pages: reader.pages, id_to_page_number: reader.id_to_page_number, id_to_snippet: reader.id_to_snippet }
     }
 
     const auto_toc_from_pages = pages => {
@@ -2031,22 +2319,7 @@ ${card_html}
         items.sort((a, b) => a.page - b.page)
         return items.map(({ level, ...rest }) => rest)
       }
-
-      const root = []
-      const stack = [{ level: 0, children: root }]
-      const get_level = it => (typeof it.level === 'number' && Number.isFinite(it.level) && it.level > 0 ? it.level : 1)
-
-      for (const it of items) {
-        const level = get_level(it)
-        while (stack.length > 1 && stack[stack.length - 1].level >= level) stack.pop()
-        const parent = stack[stack.length - 1]
-        const entry = { text: it.text, page: it.page, anchor: it.anchor }
-        const children = []
-        parent.children.push([entry, children])
-        stack.push({ level, children })
-      }
-
-      return root
+      return nest_by_level(items, it => ({ text: it.text, page: it.page, anchor: it.anchor }))
     }
 
     const update_batch_btn_label = () => {
@@ -2065,6 +2338,7 @@ ${card_html}
     const disable_primary_actions = () => {
       els.analyze_btn.disabled = true
       els.analyze_all_btn.disabled = true
+      els.preview_btn.disabled = true
       els.convert_btn.disabled = true
       els.batch_convert_btn.disabled = true
     }
@@ -2078,6 +2352,7 @@ ${card_html}
       els.analyze_btn.disabled = !has_files
       els.analyze_all_btn.disabled = !has_files
       els.batch_convert_btn.disabled = count < 2
+      els.preview_btn.disabled = !can_convert || blocked_by_preflight
       els.convert_btn.disabled = !can_convert || blocked_by_preflight
     }
 
@@ -2099,6 +2374,168 @@ ${card_html}
       sync_primary_buttons()
     }
 
+    let preview_reader = null
+    let preview_toc_tree = []
+    let preview_current_page = 1
+    let preview_last_focus = null
+    let preview_prev_overflow = ''
+
+    const is_modal_open = () => els.preview_modal.classList.contains('open')
+
+    const focusable_in = root =>
+      Array.from(
+        root.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex=\"-1\"])')
+      ).filter(el => !el.disabled && el.getAttribute('aria-hidden') !== 'true' && el.offsetParent !== null)
+
+    const set_modal_open = open => {
+      if (open) {
+        preview_last_focus = document.activeElement
+        els.preview_modal.classList.add('open')
+        els.preview_modal.setAttribute('aria-hidden', 'false')
+        preview_prev_overflow = document.documentElement.style.overflow
+        document.documentElement.style.overflow = 'hidden'
+        if (els.wrap) {
+          els.wrap.setAttribute('aria-hidden', 'true')
+          if ('inert' in els.wrap) els.wrap.inert = true
+        }
+        queueMicrotask(() => (els.preview_close_btn?.focus?.() ?? els.preview_modal_panel?.focus?.()))
+      } else {
+        els.preview_modal.classList.remove('open')
+        els.preview_modal.setAttribute('aria-hidden', 'true')
+        document.documentElement.style.overflow = preview_prev_overflow || ''
+        if (els.wrap) {
+          els.wrap.removeAttribute('aria-hidden')
+          if ('inert' in els.wrap) els.wrap.inert = false
+        }
+        const el = preview_last_focus
+        preview_last_focus = null
+        if (el && document.contains(el)) queueMicrotask(() => el.focus?.())
+      }
+    }
+
+    const close_preview_modal = () => {
+      set_modal_open(false)
+      els.preview_content.innerHTML = ''
+      els.preview_toc.innerHTML = ''
+      els.preview_status.textContent = '-'
+      els.preview_toc_status.textContent = '-'
+      preview_reader = null
+      preview_toc_tree = []
+      preview_current_page = 1
+    }
+
+    const update_preview_progress_ui = () => {
+      if (!preview_reader) return
+      const p = preview_reader.progress()
+      const percent = p.row_count ? Math.min(100, Math.round((p.offset / p.row_count) * 100)) : 0
+      els.preview_status.textContent = p.done ? `تم تحميل ${p.pages} صفحة (اكتمل)` : `تم تحميل ${p.pages} صفحة... (${percent}%)`
+      els.preview_toc_status.textContent = p.done ? 'مكتمل' : `تحميل... (${percent}%)`
+      els.preview_page_total.textContent = p.done ? `/ ${p.pages}` : `/ ${p.pages}+`
+      els.preview_load_more_btn.disabled = p.done
+    }
+
+    const render_preview_toc = () => {
+      if (!preview_toc_tree.length) {
+        els.preview_toc.innerHTML = '<div class="small">لا يوجد فهرس</div>'
+        return
+      }
+
+      const render_item = item => {
+        const [entry, children] = item
+        const page_hint = '<span class="small" data-page></span>'
+        const href = `<a href="#" data-start="${String(entry.start)}"><span>${escape_xml(entry.text)}</span> ${page_hint}</a>`
+        const kids = children?.length ? `<ol>${children.map(render_item).join('')}</ol>` : ''
+        return `<li>${href}${kids}</li>`
+      }
+
+      els.preview_toc.innerHTML = `<ol>${preview_toc_tree.map(render_item).join('')}</ol>`
+    }
+
+    const preview_show_page = async page_number => {
+      if (!preview_reader) return
+      let target = Math.max(1, Number(page_number) || 1)
+
+      while (preview_reader.pages.length < target && !preview_reader.progress().done) {
+        await preview_reader.load_more({ max_pages: Math.max(80, target - preview_reader.pages.length) })
+        update_preview_progress_ui()
+      }
+
+      if (preview_reader.progress().done && preview_reader.pages.length) target = Math.min(target, preview_reader.pages.length)
+      const page = preview_reader.pages[target - 1]
+      if (!page) {
+        els.preview_content.innerHTML = '<div class="small">لا توجد صفحة بهذا الرقم</div>'
+        return
+      }
+
+      preview_current_page = target
+      els.preview_page_input.value = String(target)
+      els.preview_content.innerHTML = page.text_html
+      els.preview_prev_btn.disabled = preview_current_page <= 1
+      els.preview_next_btn.disabled = preview_reader.progress().done && preview_current_page >= preview_reader.pages.length
+    }
+
+    const preview_go_to_start = async (start, link = null) => {
+      if (!preview_reader) return
+      const start_id = Number(start)
+      if (!Number.isFinite(start_id)) return
+
+      const resolve_start = () => {
+        if (start_id === 0) return 1
+        return preview_reader.id_to_page_number.get(start_id) ?? preview_reader.page_value_to_page_number?.get?.(start_id) ?? null
+      }
+
+      let page_number = resolve_start()
+      while (!page_number && !preview_reader.progress().done) {
+        const load_opts = { max_pages: 200 }
+        if (preview_reader.has_id_col) load_opts.until_id = start_id
+        else if (preview_reader.has_page_col) load_opts.until_page = start_id
+        await preview_reader.load_more(load_opts)
+        update_preview_progress_ui()
+        page_number = resolve_start()
+      }
+
+      if (!page_number) {
+        els.preview_status.textContent = preview_reader.has_id_col || preview_reader.has_page_col ? 'لم يتم العثور على هذا الموضع.' : 'لا يمكن الانتقال: اختر عمود المعرّف أو عمود الصفحة في جدول المحتوى.'
+        return
+      }
+
+      if (link) {
+        const span = link.querySelector('[data-page]')
+        if (span && !span.textContent.trim()) span.textContent = `(${page_number})`
+      }
+
+      await preview_show_page(page_number)
+    }
+
+    const open_preview = async () => {
+      if (!current_file) return
+      try {
+        els.preview_btn.disabled = true
+
+        const raw_toc = parse_raw_toc()
+        preview_toc_tree = nest_by_level(raw_toc ?? [], it => ({ text: it.text, start: it.start }))
+        const toc_starts = raw_toc?.map(t => t.start) ?? null
+        preview_reader = create_pages_reader(toc_starts, { log_batches: false })
+
+        const { title, author } = extract_title_author(current_file?.name ?? '')
+        els.preview_title.textContent = `${title}${author ? ` - ${author}` : ''}`
+
+        set_modal_open(true)
+        els.preview_content.innerHTML = '<div class="small">تحميل...</div>'
+        await preview_reader.load_more({ max_pages: 80 })
+        render_preview_toc()
+        await preview_show_page(1)
+        update_preview_progress_ui()
+      } catch (e) {
+        show_warn(`فشل الاستعراض: ${String(e?.message ?? e)}`)
+        set_status('خطأ')
+        log('ERR', String(e?.stack ?? e))
+        close_preview_modal()
+      } finally {
+        sync_primary_buttons()
+      }
+    }
+
     const refresh_analysis_for_current_file = file => {
       if (!analysis_results.length) return
       if (analysis_signature !== files_signature(selected_files())) return
@@ -2114,6 +2551,7 @@ ${card_html}
       analysis_signature = ''
       active_book_index = -1
       current_file = null
+      if (els.preview_modal.classList.contains('open')) close_preview_modal()
       refresh_preflight_ui()
       sync_primary_buttons()
       if (els.bok_file.files?.length) show_warn('اضغط "تحليل كل الملفات" للمعاينة المسبقة أو "تحليل" لملف واحد.')
@@ -2145,6 +2583,108 @@ ${card_html}
     els.download_each_mode.addEventListener('change', update_batch_btn_label)
     els.include_pdf.addEventListener('change', update_pdf_font_ui)
 
+    els.preview_btn.addEventListener('click', open_preview)
+    els.preview_close_btn.addEventListener('click', close_preview_modal)
+    els.preview_modal.addEventListener('click', event => {
+      if (event.target === els.preview_modal) close_preview_modal()
+    })
+    els.preview_modal.addEventListener('keydown', async event => {
+      if (!is_modal_open()) return
+
+      if (event.key === 'Escape') {
+        event.preventDefault()
+        close_preview_modal()
+        return
+      }
+
+      if (event.key === 'Tab') {
+        const items = focusable_in(els.preview_modal_panel)
+        if (!items.length) {
+          event.preventDefault()
+          return
+        }
+        const first = items[0]
+        const last = items[items.length - 1]
+        const active = document.activeElement
+        if (event.shiftKey && active === first) {
+          event.preventDefault()
+          last.focus()
+          return
+        }
+        if (!event.shiftKey && active === last) {
+          event.preventDefault()
+          first.focus()
+        }
+        return
+      }
+
+      const tag = (event.target?.tagName ?? '').toLowerCase()
+      const is_typing = tag === 'input' || tag === 'textarea' || tag === 'select' || event.target?.isContentEditable
+      if (is_typing) return
+      if (!preview_reader) return
+      const in_scroll_pane = !!event.target?.closest?.('.preview_content, .toc_tree')
+      const nav_mod = event.altKey || event.ctrlKey || event.metaKey
+      if (in_scroll_pane && !nav_mod) return
+
+      const delta = event.key === 'PageUp' ? -1 : event.key === 'PageDown' ? 1 : 0
+      if (delta) {
+        event.preventDefault()
+        await preview_show_page(Math.max(1, preview_current_page + delta))
+        return
+      }
+      if (event.key === 'Home' || event.key === 'End') {
+        event.preventDefault()
+        await preview_show_page(event.key === 'Home' ? 1 : preview_reader.pages.length || 1)
+      }
+    })
+
+    els.preview_prev_btn.addEventListener('click', async () => {
+      if (!preview_reader) return
+      await preview_show_page(Math.max(1, preview_current_page - 1))
+    })
+    els.preview_next_btn.addEventListener('click', async () => {
+      if (!preview_reader) return
+      await preview_show_page(preview_current_page + 1)
+    })
+    const preview_jump_to_input = async () => {
+      if (!preview_reader) return
+      await preview_show_page(Number(els.preview_page_input.value) || 1)
+    }
+    els.preview_page_input.addEventListener('change', preview_jump_to_input)
+    els.preview_page_input.addEventListener('keydown', async event => {
+      if (event.key !== 'Enter') return
+      event.preventDefault()
+      await preview_jump_to_input()
+    })
+    els.preview_load_more_btn.addEventListener('click', async () => {
+      if (!preview_reader) return
+      await preview_reader.load_more({ max_pages: 200 })
+      update_preview_progress_ui()
+    })
+    els.preview_toc.addEventListener('click', async event => {
+      const link = event.target.closest('a[data-start]')
+      if (!link) return
+      event.preventDefault()
+      els.preview_toc.querySelectorAll('a[aria-current=\"true\"]').forEach(a => a.removeAttribute('aria-current'))
+      link.setAttribute('aria-current', 'true')
+      await preview_go_to_start(link.dataset.start, link)
+    })
+    els.preview_toc.addEventListener('keydown', event => {
+      if (!is_modal_open()) return
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+      const links = Array.from(els.preview_toc.querySelectorAll('a[data-start]'))
+      if (!links.length) return
+      const active = document.activeElement
+      const idx = links.indexOf(active)
+      const next =
+        event.key === 'ArrowDown'
+          ? links[Math.min(links.length - 1, idx < 0 ? 0 : idx + 1)]
+          : links[Math.max(0, idx < 0 ? 0 : idx - 1)]
+      if (!next) return
+      event.preventDefault()
+      next.focus()
+    })
+
     els.preflight_tbody.addEventListener('click', async event => {
       const row = event.target.closest('tr[data-idx]')
       if (!row) return
@@ -2170,6 +2710,7 @@ ${card_html}
         const file = els.bok_file.files?.[0]
         if (!file) return
         els.analyze_btn.disabled = true
+        els.preview_btn.disabled = true
         els.convert_btn.disabled = true
         reset_log()
         await analyze_file(file)
