@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Shamela .bok إلى EPUB + PDF (قديم)</title>
+  <title>Shamela .bok إلى EPUB + PDF + HTML (قديم)</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -569,7 +569,7 @@
   <div class="wrap">
     <header>
       <div class="title">
-        <h1>أداة تحويل كتب الشاملة القديمة (.bok) إلى EPUB / PDF</h1>
+        <h1>أداة تحويل كتب الشاملة القديمة (.bok) إلى EPUB / PDF / HTML</h1>
         <div class="sub">
           تعمل بالكامل داخل المتصفح دون رفع ملفات. تدعم اختيار جداول/أعمدة الشاملة يدويًا إذا فشلت التخمينات.
         </div>
@@ -615,6 +615,10 @@
             <label class="check">
               <input id="include_pdf" type="checkbox" />
               <span>إنشاء PDF مع EPUB (اختياري)</span>
+            </label>
+            <label class="check">
+              <input id="include_html" type="checkbox" />
+              <span>إنشاء HTML مع EPUB (اختياري)</span>
             </label>
             <label class="check">
               <input id="include_author_filename" type="checkbox" />
@@ -840,6 +844,7 @@
       batch_convert_btn: $('#batch_convert_btn'),
       download_each_mode: $('#download_each_mode'),
       include_pdf: $('#include_pdf'),
+      include_html: $('#include_html'),
       include_author_filename: $('#include_author_filename'),
       include_toc_page: $('#include_toc_page'),
       pdf_font: $('#pdf_font'),
@@ -956,6 +961,7 @@
       if (typeof v === 'string' && /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)) return Number(digits_to_ascii(v))
       return null
     }
+    const is_numeric_like = v => to_int(v) != null
 
     const CP1256_TABLE = [
       0x20AC, 0x067E, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
@@ -994,13 +1000,27 @@
       }
     }
 
+    const decode_cp1256_string = value => {
+      const bytes = new Uint8Array(Array.from(String(value), ch => ch.charCodeAt(0) & 0xff))
+      return decode_windows_1256(bytes)
+    }
+
     const fix_arabic_mojibake = value => {
       if (typeof value !== 'string') return value
-      if (/[\u0600-\u06FF]/.test(value)) return value
+      if (!/[\u00C0-\u00FF]/.test(value)) return value
+
+      const mixed = /[\u0600-\u06FF]/.test(value)
+        ? value.replace(/[\u00C0-\u00FF]{2,}/g, part => {
+          const decoded = decode_cp1256_string(part)
+          return /[\u0600-\u06FF]/.test(decoded) ? decoded : part
+        })
+        : value
+      if (mixed !== value) return mixed
+
       const hi = (value.match(/[\u00C0-\u00FF]/g) ?? []).length
-      if (hi < Math.max(4, Math.floor(value.length * 0.2))) return value
-      const bytes = new Uint8Array(Array.from(value, ch => ch.charCodeAt(0) & 0xff))
-      const decoded = decode_windows_1256(bytes)
+      const min_hi = /[A-Za-z]/.test(value) ? 4 : 3
+      if (hi < Math.max(min_hi, Math.floor(value.length * 0.2))) return value
+      const decoded = decode_cp1256_string(value)
       if (/[\u0600-\u06FF]/.test(decoded)) return decoded
       return value
     }
@@ -1098,6 +1118,7 @@
     let analysis_results = []
     let analysis_signature = ''
     let active_book_index = -1
+    let content_id_col_locked = false
     const PDFMAKE_RTL_VERSION = '2.1.2'
     const PDF_BLOB_TIMEOUT_MS = 600000
     const AMIRI_QURAN_TTF_URL = 'https://cdn.jsdelivr.net/gh/google/fonts@main/ofl/amiriquran/AmiriQuran-Regular.ttf'
@@ -1239,6 +1260,7 @@
       content_table: els.content_table.value || '',
       content_text_col: els.content_text_col.value || '',
       content_id_col: els.content_id_col.value || '',
+      content_id_locked: !!content_id_col_locked,
       content_page_col: els.content_page_col.value || '',
       content_part_col: els.content_part_col.value || '',
       toc_table: els.toc_table.value || '',
@@ -1251,6 +1273,7 @@
 
     const apply_book_selection = selection => {
       if (!selection) return
+      content_id_col_locked = false
 
       if (selection.content_table && has_option(els.content_table, selection.content_table)) {
         els.content_table.value = selection.content_table
@@ -1258,6 +1281,7 @@
       }
       if (selection.content_text_col) set_select_value(els.content_text_col, selection.content_text_col)
       set_select_value(els.content_id_col, selection.content_id_col)
+      if ('content_id_locked' in selection) content_id_col_locked = !!selection.content_id_locked
       set_select_value(els.content_page_col, selection.content_page_col)
       set_select_value(els.content_part_col, selection.content_part_col)
 
@@ -1365,6 +1389,32 @@
       return cols.map(c => [c, score_col(c)]).sort((a, b) => b[1] - a[1])[0]?.[0] ?? cols[0]
     }
 
+    const pick_id_column = (preview, col_names, num_like_cols) => {
+      let toc_id_guess = ''
+      const toc_table = els.toc_table.value
+      const toc_start_col = els.toc_start_col.value
+      if (toc_table && toc_start_col) {
+        const toc_preview = read_table_preview(toc_table, 200)
+        const starts_set = new Set(toc_preview.map(r => to_int(r?.[toc_start_col])).filter(n => n != null && n > 0))
+        if (starts_set.size) {
+          const score = col => preview.reduce((acc, r) => acc + (starts_set.has(to_int(r?.[col])) ? 1 : 0), 0)
+          const same_name = num_like_cols.find(c => lower(c).trim() === lower(toc_start_col).trim()) ?? ''
+          const by_name = num_like_cols.find(c => lower(c).trim() === 'id') ?? num_like_cols.find(c => lower(c).trim() === 'na') ?? ''
+          const candidates = [...new Set([same_name, by_name, ...num_like_cols].filter(Boolean))]
+          const best = candidates.map(c => [c, score(c)]).sort((a, b) => b[1] - a[1])[0]
+          toc_id_guess = best?.[1] > 0 ? best[0] : same_name || by_name || ''
+        }
+      }
+      const id_col = col_names.find(c => lower(c).trim() === 'id') ?? ''
+      const na_col = col_names.find(c => lower(c).trim() === 'na') ?? ''
+      return (
+        toc_id_guess ||
+        (id_col && num_like_cols.includes(id_col) ? id_col : '') ||
+        (na_col && num_like_cols.includes(na_col) ? na_col : '') ||
+        pick_numeric_column(preview, col_names)
+      )
+    }
+
     const guess_tables = () => {
       const names = table_names
       const lc = name => lower(name)
@@ -1446,23 +1496,17 @@
       const meta = table_meta.get(name) ?? { column_names: [] }
       const preview = read_table_preview(name, 80)
       const col_names = meta.column_names ?? []
+      const prev_id_col = els.content_id_col.value || ''
 
       const text_guess = pick_best_text_column(preview, col_names.filter(c => preview.some(r => typeof r?.[c] === 'string')))
-      const id_guess = pick_numeric_column(preview, col_names)
       let page_guess = col_names.find(c => lower(c).trim() === 'page') ?? col_names.find(c => lower(c).includes('page')) ?? ''
       const part_guess = col_names.find(c => lower(c).trim() === 'part') ?? col_names.find(c => lower(c).includes('part')) ?? ''
       const hno_guess = col_names.find(c => lower(c).trim() === 'hno')
 
       const text_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'string'))
       const num_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'number'))
-      const num_like_cols = col_names.filter(c =>
-        preview.some(r => {
-          const v = r?.[c]
-          if (typeof v === 'number') return true
-          if (typeof v === 'string') return /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)
-          return false
-        }),
-      )
+      const num_like_cols = col_names.filter(c => preview.some(r => is_numeric_like(r?.[c])))
+      const id_guess = pick_id_column(preview, col_names, num_like_cols)
 
       if (hno_guess && num_like_cols.includes(hno_guess)) {
         const values = preview
@@ -1488,7 +1532,11 @@
       set_select_options(els.content_part_col, [''].concat(num_like_cols), { placeholder: 'بدون' })
 
       if (text_guess) els.content_text_col.value = text_guess
-      if (id_guess) els.content_id_col.value = id_guess
+      if (content_id_col_locked && prev_id_col && num_like_cols.includes(prev_id_col)) els.content_id_col.value = prev_id_col
+      else {
+        content_id_col_locked = false
+        if (id_guess) els.content_id_col.value = id_guess
+      }
       if (page_guess && num_like_cols.includes(page_guess)) els.content_page_col.value = page_guess
       if (part_guess && num_like_cols.includes(part_guess)) els.content_part_col.value = part_guess
     }
@@ -1507,14 +1555,7 @@
 
       const text_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'string'))
       const num_cols = col_names.filter(c => preview.some(r => typeof r?.[c] === 'number'))
-      const num_like_cols = col_names.filter(c =>
-        preview.some(r => {
-          const v = r?.[c]
-          if (typeof v === 'number') return true
-          if (typeof v === 'string') return /^\s*[0-9\u0660-\u0669\u06F0-\u06F9]+\s*$/.test(v)
-          return false
-        }),
-      )
+      const num_like_cols = col_names.filter(c => preview.some(r => is_numeric_like(r?.[c])))
 
       const text_guess = pick_best_text_column(preview, text_cols)
       const start_guess =
@@ -1530,6 +1571,16 @@
       if (text_guess) els.toc_text_col.value = text_guess
       if (start_guess && num_like_cols.includes(start_guess)) els.toc_start_col.value = start_guess
       if (level_guess && num_like_cols.includes(level_guess)) els.toc_level_col.value = level_guess
+
+      if (!content_id_col_locked && els.content_table.value) {
+        const content_name = els.content_table.value
+        const content_meta = table_meta.get(content_name) ?? { column_names: [] }
+        const content_preview = read_table_preview(content_name, 80)
+        const content_cols = content_meta.column_names ?? []
+        const content_num_like_cols = content_cols.filter(c => content_preview.some(r => is_numeric_like(r?.[c])))
+        const id_guess = pick_id_column(content_preview, content_cols, content_num_like_cols)
+        if (id_guess && has_option(els.content_id_col, id_guess)) els.content_id_col.value = id_guess
+      }
     }
 
     const get_meta_guess = () => {
@@ -1631,6 +1682,64 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
         return `<navPoint id="${id}"><navLabel><text>${escape_xml(item.text)}</text></navLabel><content src="${href}"/></navPoint>`
       }
       return toc.map(render_item).join('')
+    }
+
+    const render_html_nav_items = toc => {
+      const render_item = item => {
+        if (Array.isArray(item)) {
+          const [entry, children] = item
+          const href = entry.anchor ? `#${entry.anchor}` : `#p${entry.page}`
+          return `<li><a href="${href}">${escape_xml(entry.text)}</a>${render_list(children)}</li>`
+        }
+        const href = item.anchor ? `#${item.anchor}` : `#p${item.page}`
+        return `<li><a href="${href}">${escape_xml(item.text)}</a></li>`
+      }
+      const render_list = items => items?.length ? `<ol>${items.map(render_item).join('')}</ol>` : ''
+      return render_list(toc)
+    }
+
+    const build_html = async (info, pages) => {
+      const title = info.title || `الشاملة ${info.id ?? 0}`
+      const author = info.author || ''
+      const filename = make_output_filename(title, author, 'html')
+      const sorted_pages = [...pages].sort((a, b) => a.page_number - b.page_number)
+      const toc_source = info.toc?.length ? info.toc : sorted_pages.map(p => ({ page: p.page_number, text: `صفحة ${p.page_number}` }))
+      const toc_html = render_html_nav_items(toc_source)
+      const info_html = sanitize_html_for_xhtml(info.about ?? '')
+      const pages_html = sorted_pages.map(page => `<section id="p${page.page_number}" class="page_block">${page.text_html}</section>`).join('\n')
+      const html = `<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>${escape_xml(title)}</title>
+    <style>
+${BASE_CSS}
+body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
+.top{margin-bottom:20px}
+.toc{margin:18px 0 24px;padding:12px 14px;border:1px solid #ddd;border-radius:12px;background:#fafafa}
+.toc h2{margin:0 0 10px}
+.toc ol{margin:0;padding:0 22px 0 0}
+.toc li{margin:6px 0}
+.toc a{text-decoration:none}
+.toc a:hover{text-decoration:underline}
+.content{display:grid;gap:14px}
+.page_block{padding:14px 12px;border:1px solid #eee;border-radius:12px;background:#fff}
+    </style>
+  </head>
+  <body>
+    <section class="top">${info_html}</section>
+    <nav class="toc">
+      <h2>فهرس الموضوعات</h2>
+      ${toc_html || '<ol><li>لا يوجد فهرس</li></ol>'}
+    </nav>
+    <main class="content">${pages_html}</main>
+  </body>
+</html>
+`
+
+      const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
+      return { blob, filename }
     }
 
     const build_epub = async (info, pages) => {
@@ -1949,6 +2058,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       mdb = new MDBReader(buf, password ? { password } : undefined)
       table_names = mdb.getTableNames({ normalTables: true, systemTables: false, linkedTables: false })
       current_file = file
+      content_id_col_locked = false
       build_table_meta()
 
       els.tables_dump.value = table_names
@@ -1990,7 +2100,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       els.sum_title.textContent = title || '-'
       els.sum_author.textContent = author || '-'
 
-      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB (+PDF اختياري)".')
+      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB (+PDF/+HTML اختياري)".')
       set_status('جاهز للتحويل')
       if (enable_convert) els.convert_btn.disabled = false
     }
@@ -2011,7 +2121,7 @@ ${card_html}
       return { info, pages }
     }
 
-    const convert_current_mdb_outputs = async (fallback_name, { include_pdf = false, pdf_mode = 'blob' } = {}) => {
+    const convert_current_mdb_outputs = async (fallback_name, { include_pdf = false, include_html = false, pdf_mode = 'blob' } = {}) => {
       const { info, pages } = await build_current_book_payload(fallback_name)
       set_status('بناء EPUB...')
       const epub = await build_epub(info, pages)
@@ -2027,7 +2137,18 @@ ${card_html}
           log(`ERR: PDF build failed: ${pdf_error}`)
         }
       }
-      return { epub, pdf, pdf_error }
+      let html = null
+      let html_error = ''
+      if (include_html) {
+        try {
+          set_status('بناء HTML...')
+          html = await build_html(info, pages)
+        } catch (e) {
+          html_error = String(e?.message ?? e)
+          log(`ERR: HTML build failed: ${html_error}`)
+        }
+      }
+      return { epub, pdf, html, pdf_error, html_error }
     }
 
     const load_book_by_index = async (index, { keep_current = true } = {}) => {
@@ -2117,27 +2238,26 @@ ${card_html}
       const table = mdb.getTable(content_table)
       const row_count = table.rowCount
 
-      if (toc_starts?.length && !id_col) {
+      if (toc_starts?.length && !content_id_col_locked) {
         const cols = table_meta.get(content_table)?.column_names ?? []
         const toc_start_col = els.toc_start_col.value || ''
-        const hint = lower(toc_start_col)
-        const toc_start_is_page = hint.includes('page') || hint.includes('صفحة') || hint === 'p'
-
-        const same_name = toc_start_col ? cols.find(c => lower(c).trim() === lower(toc_start_col).trim()) : null
         const excluded = c => !c || c === text_col || c === page_col || c === part_col
-        if (same_name && !excluded(same_name)) id_col = same_name
-        else if (!toc_start_is_page) {
-          const by_name = cols.find(c => lower(c).trim() === 'id') ?? cols.find(c => lower(c).trim() === 'na') ?? null
-          if (by_name && !excluded(by_name)) id_col = by_name
-          else {
-            const starts_set = new Set(toc_starts.filter(n => typeof n === 'number' && Number.isFinite(n) && n > 0))
-            const sample = table.getData({ rowOffset: 0, rowLimit: Math.min(400, row_count) })
-            const candidates = cols.filter(c => !excluded(c))
-            const score = col => sample.reduce((acc, r) => acc + (starts_set.has(to_int(r?.[col])) ? 1 : 0), 0)
-            const best = candidates.map(c => [c, score(c)]).sort((a, b) => b[1] - a[1])[0]
-            if (best?.[1] > 0) id_col = best[0]
-          }
-        }
+        const starts_set = new Set(toc_starts.filter(n => typeof n === 'number' && Number.isFinite(n) && n > 0))
+        const sample = table.getData({ rowOffset: 0, rowLimit: Math.min(500, row_count) })
+        const score = col => sample.reduce((acc, r) => acc + (starts_set.has(to_int(r?.[col])) ? 1 : 0), 0)
+        const is_num_like_col = col => sample.some(r => is_numeric_like(r?.[col]))
+        const same_name = toc_start_col ? cols.find(c => lower(c).trim() === lower(toc_start_col).trim() && is_num_like_col(c)) : null
+        const by_name =
+          cols.find(c => lower(c).trim() === 'id' && is_num_like_col(c)) ??
+          cols.find(c => lower(c).trim() === 'na' && is_num_like_col(c)) ??
+          null
+        const numeric_cols = cols.filter(c => is_num_like_col(c))
+        const candidates = [...new Set([same_name, by_name, ...numeric_cols])].filter(c => !excluded(c))
+        const best = candidates.map(c => [c, score(c)]).sort((a, b) => b[1] - a[1])[0]
+        const current_score = id_col ? score(id_col) : -1
+        if (best?.[1] > Math.max(0, current_score)) id_col = best[0]
+        else if (!id_col && same_name && !excluded(same_name)) id_col = same_name
+        else if (!id_col && by_name && !excluded(by_name)) id_col = by_name
       }
 
       const has_page_col = !!page_col
@@ -2328,6 +2448,12 @@ ${card_html}
 
     const update_pdf_font_ui = () => {
       els.pdf_font.disabled = !els.include_pdf.checked
+    }
+
+    const append_optional_output_counts = (summary, { include_pdf, pdf_success_count, include_html, html_success_count }) => {
+      if (include_pdf) summary.push(`${pdf_success_count} ملف PDF`)
+      if (include_html) summary.push(`${html_success_count} ملف HTML`)
+      return summary
     }
 
     const reset_log = () => {
@@ -2550,6 +2676,7 @@ ${card_html}
       analysis_results = []
       analysis_signature = ''
       active_book_index = -1
+      content_id_col_locked = false
       current_file = null
       if (els.preview_modal.classList.contains('open')) close_preview_modal()
       refresh_preflight_ui()
@@ -2558,6 +2685,7 @@ ${card_html}
     })
 
     els.content_table.addEventListener('change', () => {
+      content_id_col_locked = false
       update_content_columns_ui()
       persist_active_book_selection()
     })
@@ -2568,7 +2696,6 @@ ${card_html}
 
       ;[
         els.content_text_col,
-        els.content_id_col,
         els.content_page_col,
         els.content_part_col,
         els.toc_text_col,
@@ -2579,6 +2706,10 @@ ${card_html}
       ].forEach(control => {
         control.addEventListener('change', persist_active_book_selection)
       })
+    els.content_id_col.addEventListener('change', () => {
+      content_id_col_locked = true
+      persist_active_book_selection()
+    })
 
     els.download_each_mode.addEventListener('change', update_batch_btn_label)
     els.include_pdf.addEventListener('change', update_pdf_font_ui)
@@ -2779,17 +2910,28 @@ ${card_html}
         set_status('تحويل...')
         const fallback_name = current_file?.name ?? els.bok_file.files?.[0]?.name ?? ''
         const include_pdf = !!els.include_pdf.checked
-        const { epub, pdf, pdf_error } = await convert_current_mdb_outputs(fallback_name, {
+        const include_html = !!els.include_html.checked
+        const { epub, pdf, html, pdf_error, html_error } = await convert_current_mdb_outputs(fallback_name, {
           include_pdf,
+          include_html,
           pdf_mode: include_pdf ? 'download' : 'blob',
         })
         download_blob(epub.blob, epub.filename)
         if (include_pdf && pdf) download_pdf_doc(pdf, pdf.filename)
-        if (include_pdf && pdf_error) {
-          show_warn(`تم إنشاء EPUB (${epub.filename}) لكن فشل PDF: ${pdf_error}`)
+        if (include_html && html) download_blob(html.blob, html.filename)
+
+        const outputs = [epub.filename]
+        if (include_pdf && pdf?.filename) outputs.push(pdf.filename)
+        if (include_html && html?.filename) outputs.push(html.filename)
+        const errors = []
+        if (include_pdf && pdf_error) errors.push(`PDF: ${pdf_error}`)
+        if (include_html && html_error) errors.push(`HTML: ${html_error}`)
+
+        if (errors.length) {
+          show_warn(`تم إنشاء ${outputs.join(' + ')} لكن حدث فشل: ${errors.join(' | ')}`)
           set_status('تم جزئيًا')
         } else {
-          show_ok(include_pdf ? `تم إنشاء الملفين: ${epub.filename} + ${pdf?.filename}` : `تم إنشاء الملف: ${epub.filename}`)
+          show_ok(outputs.length > 1 ? `تم إنشاء الملفات: ${outputs.join(' + ')}` : `تم إنشاء الملف: ${epub.filename}`)
           set_status('تم')
         }
       } catch (e) {
@@ -2823,6 +2965,7 @@ ${card_html}
 
       const download_each = !!els.download_each_mode.checked
       const include_pdf = !!els.include_pdf.checked
+      const include_html = !!els.include_html.checked
       const uniquify_name = (name, seen) => {
         if (!seen.has(name)) return name
         const dot = name.lastIndexOf('.')
@@ -2844,6 +2987,8 @@ ${card_html}
         let success_count = 0
         let pdf_success_count = 0
         let pdf_error_count = 0
+        let html_success_count = 0
+        let html_error_count = 0
 
         for (let i = 0; i < items.length; i += 1) {
           const item = items[i]
@@ -2857,8 +3002,9 @@ ${card_html}
           try {
             await analyze_file(file, { skip_success_message: true, enable_convert: false })
             if (item.selection) apply_book_selection(item.selection)
-            const { epub, pdf, pdf_error } = await convert_current_mdb_outputs(file.name, {
+            const { epub, pdf, html, pdf_error, html_error } = await convert_current_mdb_outputs(file.name, {
               include_pdf,
+              include_html,
               pdf_mode: download_each ? 'download' : 'blob',
             })
             const epub_name = uniquify_name(epub.filename, used_names)
@@ -2880,6 +3026,18 @@ ${card_html}
               log(`ERR: PDF ${file.name} -> ${pdf_error}`)
             }
 
+            if (include_html && html) {
+              const html_name = uniquify_name(html.filename, used_names)
+              used_names.add(html_name)
+              if (download_each) download_blob(html.blob, html_name)
+              else batch_zip.file(html_name, html.blob)
+              html_success_count += 1
+              log(`OK: ${html_name}`)
+            } else if (include_html && html_error) {
+              html_error_count += 1
+              log(`ERR: HTML ${file.name} -> ${html_error}`)
+            }
+
             if (use_preflight) active_book_index = i
             success_count += 1
           } catch (e) {
@@ -2888,11 +3046,17 @@ ${card_html}
         }
 
         if (!success_count) throw new Error('فشل تحويل جميع الملفات')
+        const has_partial = (include_pdf && pdf_error_count) || (include_html && html_error_count)
 
         if (download_each) {
-          if (include_pdf) show_ok(`تم تنزيل ${success_count} ملف EPUB و ${pdf_success_count} ملف PDF مباشرة`)
-          else show_ok(`تم تنزيل ${success_count} ملف EPUB مباشرة`)
-          if (include_pdf && pdf_error_count) set_status('تم جزئيًا')
+          const summary = append_optional_output_counts([`تم تنزيل ${success_count} ملف EPUB مباشرة`], {
+            include_pdf,
+            pdf_success_count,
+            include_html,
+            html_success_count,
+          })
+          show_ok(summary.join(' و '))
+          if (has_partial) set_status('تم جزئيًا')
           else set_status('تم')
         } else {
           const ts = new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)
@@ -2905,9 +3069,14 @@ ${card_html}
             compressionOptions: { level: 9 },
           })
           download_blob(zip_blob, zip_name)
-          if (include_pdf) show_ok(`تم تحويل ${success_count} ملف EPUB و ${pdf_success_count} ملف PDF وتنزيل ${zip_name}`)
-          else show_ok(`تم تحويل ${success_count} ملف وتنزيل ${zip_name}`)
-          if (include_pdf && pdf_error_count) set_status('تم جزئيًا')
+          const summary = append_optional_output_counts([`تم تحويل ${success_count} ملف EPUB`], {
+            include_pdf,
+            pdf_success_count,
+            include_html,
+            html_success_count,
+          })
+          show_ok(`${summary.join(' و ')} وتنزيل ${zip_name}`)
+          if (has_partial) set_status('تم جزئيًا')
           else set_status('تم')
         }
       } catch (e) {
