@@ -1749,21 +1749,15 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
 
     const extract_death_info = card => {
       const text = digits_to_ascii(decode_value(card || ''))
-      const patterns = [
-        /(?:^|\s|[\(\[\{،؛,:-])(?:ت|توفي|توفي)\s*(?:سنة)?\s*[:：-]?\s*(\d{3,4})(?:\s*(?:هـ|هجري(?:ة)?))?/,
-        /(?:^|\s|[\(\[\{،؛,:-])(?:ت|توفي|توفي)\s*[:：-]?\s*(\d{3,4})\s*(?:هـ|هجري(?:ة)?)/,
-      ]
-      for (const pattern of patterns) {
-        const m = text.match(pattern)
-        if (m) {
-          const death_year = Number(m[1])
-          return {
-            death_year: Number.isFinite(death_year) ? death_year : null,
-            death_date: `${m[1]} هـ`,
-          }
+      const marker_match = text.match(/المتوفى\s*[:：-]\s*([^\s\)\]\}،؛,:-]+)/)
+      if (marker_match) {
+        const year_match = String(marker_match[1]).match(/\d{3,4}/)
+        if (year_match) {
+          const death_year = Number(year_match[0])
+          return Number.isFinite(death_year) ? death_year : null
         }
       }
-      return { death_year: null, death_date: '' }
+      return null
     }
 
     const normalize_meta_title = value => String(value ?? '').trim().replace(/\s+/g, '_')
@@ -1775,8 +1769,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
         title: normalize_meta_title(info.title),
         author: {
           name: info.author || '',
-          death_year: death_info.death_year,
-          death_date: death_info.death_date,
+          death_year: death_info,
         },
       }
     }
