@@ -924,6 +924,8 @@
         .replace(/\s+/g, ' ')
         .trim()
 
+    const sanitize_zip_book_name = value => sanitize_filename(value).replace(/\s+/g, '_')
+
     const make_output_filename = (title, author, ext) => {
       const include_author = els.include_author_filename.checked
       const base = include_author && author ? `${title} - ${author}` : title
@@ -3043,7 +3045,7 @@ ${card_html}
         }
 
         const zip_blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip', compression: 'DEFLATE', compressionOptions: { level: 9 } })
-        const zip_name = sanitize_filename(`${html.folder_name}.zip`)
+        const zip_name = sanitize_zip_book_name(`${html.folder_name}.zip`)
         download_blob(zip_blob, zip_name)
 
         const errors = []
