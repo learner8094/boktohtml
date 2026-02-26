@@ -610,7 +610,7 @@
             </div>
             <label class="check">
               <input id="download_each_mode" type="checkbox" checked />
-              <span>إخراج دفعي داخل ZIP (مجلد html/ لكل كتاب)</span>
+              <span>إخراج دفعي داخل ZIP (مجلد باسم الكتاب لكل كتاب)</span>
             </label>
             <label class="check">
               <input id="include_epub" type="checkbox" />
@@ -1725,11 +1725,25 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       return out.join('\n')
     }
 
-    const slugify_id = value =>
-      String(value ?? '')
-        .toLowerCase()
-        .replace(/[^\p{L}\p{N}]+/gu, '_')
-        .replace(/^_+|_+$/g, '') || 'book'
+    const transliterate_arabic = value => {
+      const map = {
+        'ا': 'a', 'أ': 'a', 'إ': 'i', 'آ': 'a', 'ٱ': 'a',
+        'ب': 'b', 'ت': 't', 'ث': 'th', 'ج': 'j', 'ح': 'h', 'خ': 'kh',
+        'د': 'd', 'ذ': 'dh', 'ر': 'r', 'ز': 'z', 'س': 's', 'ش': 'sh',
+        'ص': 's', 'ض': 'd', 'ط': 't', 'ظ': 'z', 'ع': 'a', 'غ': 'gh',
+        'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l', 'م': 'm', 'ن': 'n',
+        'ه': 'h', 'ة': 'h', 'و': 'w', 'ؤ': 'w', 'ي': 'y', 'ى': 'a', 'ئ': 'y',
+      }
+      const text = String(value ?? '').normalize('NFKD').replace(/[\u064B-\u065F\u0670]/g, '')
+      let out = ''
+      for (const ch of text) {
+        if (/[a-z0-9]/i.test(ch)) out += ch.toLowerCase()
+        else if (map[ch]) out += map[ch]
+      }
+      return out
+    }
+
+    const slugify_id = value => transliterate_arabic(value) || 'book'
 
     const extract_death_year = card => {
       const text = digits_to_ascii(decode_value(card || ''))
@@ -1757,7 +1771,7 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       const sorted_pages = [...pages].sort((a, b) => a.page_number - b.page_number)
       const blocks = sorted_pages.map(page => {
         const cleaned = clean_html_fragment(page.text_html)
-        return `<p data-page="${page.page_number}">[[PAGE_BREAK:${page.page_number}]]</p>
+        return `<span class="page-break-marker" data-page-break="${page.page_number}" hidden aria-hidden="true"></span>
 ${cleaned}`.trim()
       }).join('\n')
       const html = `<html lang="ar" dir="rtl"><body>
@@ -1766,7 +1780,7 @@ ${blocks}
 `
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
       const meta = build_meta_payload(info)
-      return { blob, filename, meta, folder_name: sanitize_filename(meta.id || title) }
+      return { blob, filename, meta, folder_name: sanitize_filename(title) || sanitize_filename(meta.id) || 'book' }
     }
 
     const build_epub = async (info, pages) => {
@@ -2040,11 +2054,6 @@ ${blocks}
       if (source_groups.length) content.push({ text: '', margin: [0, 0, 0, 8], pageBreak: 'after' })
 
       source_groups.forEach((group, idx) => {
-        const meta = [
-          group.part != null ? `الجزء: ${group.part}` : null,
-          group.page ? `الصفحة: ${group.page}` : null,
-        ].filter(Boolean).join(' - ')
-        if (meta) content.push({ text: meta, style: 'page_meta' })
         if (group.blocks.length) {
           group.blocks.forEach(block => {
             const text = compact_pdf_text(block.text)
@@ -2379,10 +2388,6 @@ ${card_html}
             const pv = page_col ? to_int(row?.[page_col]) : null
             const part_raw = part_col ? row?.[part_col] : null
             const partv = part_col ? to_int(part_raw) : null
-            const part_text = part_col && partv == null ? decode_value(part_raw).replace(/\u0000/g, '').trim() : ''
-            const part_display = partv != null ? String(partv) : part_text || ''
-
-            const footer = [part_display ? `الجزء: ${part_display}` : null, pv ? `الصفحة: ${pv}` : null].filter(Boolean).join(' - ')
 
             let chunks = []
             if (!split_numbered || looks_like_html(raw)) {
@@ -2451,7 +2456,7 @@ ${card_html}
               }
               out.push(...paras)
               const body = `<div>${out.join('')}</div>`
-              const text_html = footer ? `${body}<div class="text-center">${footer}</div>` : body
+              const text_html = body
               const page_number = pages.length + 1
               pages.push({ page_number, page: pv ?? 0, part: partv, text_html: sanitize_html_for_xhtml(text_html) })
 
@@ -3023,18 +3028,18 @@ ${card_html}
         })
 
         const zip = new JSZip()
-        const folder = zip.folder(`html/${html.folder_name}`)
+        const folder = zip.folder(html.folder_name)
         folder?.file(html.filename, html.blob)
         folder?.file('meta.json', JSON.stringify(html.meta, null, 2))
 
-        const outputs = [`html/${html.folder_name}/${html.filename}`, `html/${html.folder_name}/meta.json`]
+        const outputs = [`${html.folder_name}/${html.filename}`, `${html.folder_name}/meta.json`]
         if (include_pdf && pdf?.blob) {
           folder?.file(pdf.filename, pdf.blob)
-          outputs.push(`html/${html.folder_name}/${pdf.filename}`)
+          outputs.push(`${html.folder_name}/${pdf.filename}`)
         }
         if (include_epub && epub?.blob) {
           folder?.file(epub.filename, epub.blob)
-          outputs.push(`html/${html.folder_name}/${epub.filename}`)
+          outputs.push(`${html.folder_name}/${epub.filename}`)
         }
 
         const zip_blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip', compression: 'DEFLATE', compressionOptions: { level: 9 } })
@@ -3115,15 +3120,15 @@ ${card_html}
               pdf_mode: 'blob',
             })
 
-            const folder = batch_zip.folder(`html/${html.folder_name}`)
+            const folder = batch_zip.folder(html.folder_name)
             folder?.file(html.filename, html.blob)
             folder?.file('meta.json', JSON.stringify(html.meta, null, 2))
-            log(`OK: html/${html.folder_name}/${html.filename}`)
+            log(`OK: ${html.folder_name}/${html.filename}`)
 
             if (include_pdf && pdf?.blob) {
               folder?.file(pdf.filename, pdf.blob)
               pdf_success_count += 1
-              log(`OK: html/${html.folder_name}/${pdf.filename}`)
+              log(`OK: ${html.folder_name}/${pdf.filename}`)
             } else if (include_pdf && pdf_error) {
               pdf_error_count += 1
               log(`ERR: PDF ${file.name} -> ${pdf_error}`)
@@ -3132,7 +3137,7 @@ ${card_html}
             if (include_epub && epub?.blob) {
               folder?.file(epub.filename, epub.blob)
               epub_success_count += 1
-              log(`OK: html/${html.folder_name}/${epub.filename}`)
+              log(`OK: ${html.folder_name}/${epub.filename}`)
             } else if (include_epub && epub_error) {
               epub_error_count += 1
               log(`ERR: EPUB ${file.name} -> ${epub_error}`)
