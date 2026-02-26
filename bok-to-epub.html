@@ -1753,17 +1753,15 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       return m ? Number(m[1]) : null
     }
 
+    const normalize_meta_title = value => String(value ?? '').trim().replace(/\s+/g, '_')
+
     const build_meta_payload = info => ({
       id: slugify_id(info.title || info.id || 'book'),
-      title: info.title || '',
+      title: normalize_meta_title(info.title),
       author: {
         name: info.author || '',
         death_year: extract_death_year(info.card ?? ''),
       },
-      category: '',
-      sub_category: '',
-      language: 'ar',
-      has_page_numbers: true,
     })
 
     const build_clean_html = async (info, pages) => {
