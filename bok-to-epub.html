@@ -1747,22 +1747,39 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
 
     const slugify_id = value => transliterate_arabic(value) || 'book'
 
-    const extract_death_year = card => {
+    const extract_death_info = card => {
       const text = digits_to_ascii(decode_value(card || ''))
-      const m = text.match(/(?:ت\s*[:：]?\s*|توفي سنة\s*)(\d{3,4})/)
-      return m ? Number(m[1]) : null
+      const patterns = [
+        /(?:^|\s|[\(\[\{،؛,:-])(?:ت|توفي|توفي)\s*(?:سنة)?\s*[:：-]?\s*(\d{3,4})(?:\s*(?:هـ|هجري(?:ة)?))?/,
+        /(?:^|\s|[\(\[\{،؛,:-])(?:ت|توفي|توفي)\s*[:：-]?\s*(\d{3,4})\s*(?:هـ|هجري(?:ة)?)/,
+      ]
+      for (const pattern of patterns) {
+        const m = text.match(pattern)
+        if (m) {
+          const death_year = Number(m[1])
+          return {
+            death_year: Number.isFinite(death_year) ? death_year : null,
+            death_date: `${m[1]} هـ`,
+          }
+        }
+      }
+      return { death_year: null, death_date: '' }
     }
 
     const normalize_meta_title = value => String(value ?? '').trim().replace(/\s+/g, '_')
 
-    const build_meta_payload = info => ({
-      id: slugify_id(info.title || info.id || 'book'),
-      title: normalize_meta_title(info.title),
-      author: {
-        name: info.author || '',
-        death_year: extract_death_year(info.card ?? ''),
-      },
-    })
+    const build_meta_payload = info => {
+      const death_info = extract_death_info(info.card ?? '')
+      return {
+        id: slugify_id(info.title || info.id || 'book'),
+        title: normalize_meta_title(info.title),
+        author: {
+          name: info.author || '',
+          death_year: death_info.death_year,
+          death_date: death_info.death_date,
+        },
+      }
+    }
 
     const build_clean_html = async (info, pages) => {
       const title = info.title || `الشاملة ${info.id ?? 0}`
