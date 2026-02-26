@@ -921,7 +921,7 @@
     const sanitize_filename = value =>
       String(value)
         .replace(/[/:*?"<>|]+/g, '_')
-        .replace(/\s+/g, ' ')
+        .replace(/\s+/g, '_')
         .trim()
 
     const sanitize_zip_book_name = value => sanitize_filename(value).replace(/\s+/g, '_')
