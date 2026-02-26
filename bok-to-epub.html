@@ -4,7 +4,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Shamela .bok إلى EPUB + PDF + HTML (قديم)</title>
+  <title>Shamela .bok إلى HTML + EPUB + PDF</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -586,8 +586,8 @@
           <div class="btns head_actions">
             <button id="analyze_btn" class="primary" disabled>تحليل</button>
             <button id="preview_btn" class="primary" disabled>استعراض</button>
-            <button id="convert_btn" class="good" disabled>تحويل وتنزيل</button>
-            <button id="batch_convert_btn" class="good" disabled>تحويل مجموعة (ZIP)</button>
+            <button id="convert_btn" class="good" disabled>تحويل وتنزيل HTML</button>
+            <button id="batch_convert_btn" class="good" disabled>تحويل مجموعة HTML (ZIP)</button>
           </div>
         </div>
         <div class="body">
@@ -610,15 +610,15 @@
             </div>
             <label class="check">
               <input id="download_each_mode" type="checkbox" checked />
-              <span>تنزيل كل ملف مباشرة في التحويل الجماعي</span>
+              <span>إخراج دفعي داخل ZIP (مجلد html/ لكل كتاب)</span>
+            </label>
+            <label class="check">
+              <input id="include_epub" type="checkbox" />
+              <span>إنشاء EPUB مع HTML (اختياري)</span>
             </label>
             <label class="check">
               <input id="include_pdf" type="checkbox" />
-              <span>إنشاء PDF مع EPUB (اختياري)</span>
-            </label>
-            <label class="check">
-              <input id="include_html" type="checkbox" />
-              <span>إنشاء HTML مع EPUB (اختياري)</span>
+              <span>إنشاء PDF مع HTML (اختياري)</span>
             </label>
             <label class="check">
               <input id="include_author_filename" type="checkbox" />
@@ -844,8 +844,8 @@
       batch_convert_btn: $('#batch_convert_btn'),
       download_each_mode: $('#download_each_mode'),
       include_pdf: $('#include_pdf'),
-      include_html: $('#include_html'),
       include_author_filename: $('#include_author_filename'),
+      include_epub: $('#include_epub'),
       include_toc_page: $('#include_toc_page'),
       pdf_font: $('#pdf_font'),
       preview_modal: $('#preview_modal'),
@@ -1691,62 +1691,82 @@ body{line-height:1.7;margin:1.5rem;color:#1f1f1f}
       return toc.map(render_item).join('')
     }
 
-    const render_html_nav_items = toc => {
-      const render_item = item => {
-        if (Array.isArray(item)) {
-          const [entry, children] = item
-          const href = entry.anchor ? `#${entry.anchor}` : `#p${entry.page}`
-          return `<li><a href="${href}">${escape_xml(entry.text)}</a>${render_list(children)}</li>`
-        }
-        const href = item.anchor ? `#${item.anchor}` : `#p${item.page}`
-        return `<li><a href="${href}">${escape_xml(item.text)}</a></li>`
+    const clean_html_fragment = html => {
+      const container = document.createElement('div')
+      container.innerHTML = String(html ?? '')
+      const out = []
+      const normalize = text => String(text ?? '').replace(/ /g, ' ').replace(/\s+/g, ' ').trim()
+      const push_paragraph = text => {
+        const t = normalize(text)
+        if (t) out.push(`<p>${escape_xml(t)}</p>`)
       }
-      const render_list = items => items?.length ? `<ol>${items.map(render_item).join('')}</ol>` : ''
-      return render_list(toc)
+
+      const walk = node => {
+        if (!node) return
+        if (node.nodeType === Node.TEXT_NODE) return push_paragraph(node.textContent)
+        if (node.nodeType !== Node.ELEMENT_NODE) return
+        const tag = String(node.tagName ?? '').toLowerCase()
+        if (/^h[1-3]$/.test(tag)) {
+          const t = normalize(node.textContent)
+          if (t) out.push(`<${tag}>${escape_xml(t)}</${tag}>`)
+          return
+        }
+        if (/^h[4-6]$/.test(tag)) {
+          const t = normalize(node.textContent)
+          if (t) out.push(`<h3>${escape_xml(t)}</h3>`)
+          return
+        }
+        if (tag === 'p') return push_paragraph(node.textContent)
+        if (tag === 'style' || tag === 'script') return
+        Array.from(node.childNodes ?? []).forEach(walk)
+      }
+
+      Array.from(container.childNodes ?? []).forEach(walk)
+      return out.join('\n')
     }
 
-    const build_html = async (info, pages) => {
+    const slugify_id = value =>
+      String(value ?? '')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}]+/gu, '_')
+        .replace(/^_+|_+$/g, '') || 'book'
+
+    const extract_death_year = card => {
+      const text = digits_to_ascii(decode_value(card || ''))
+      const m = text.match(/(?:ت\s*[:：]?\s*|توفي سنة\s*)(\d{3,4})/)
+      return m ? Number(m[1]) : null
+    }
+
+    const build_meta_payload = info => ({
+      id: slugify_id(info.title || info.id || 'book'),
+      title: info.title || '',
+      author: {
+        name: info.author || '',
+        death_year: extract_death_year(info.card ?? ''),
+      },
+      category: '',
+      sub_category: '',
+      language: 'ar',
+      has_page_numbers: true,
+    })
+
+    const build_clean_html = async (info, pages) => {
       const title = info.title || `الشاملة ${info.id ?? 0}`
       const author = info.author || ''
       const filename = make_output_filename(title, author, 'html')
       const sorted_pages = [...pages].sort((a, b) => a.page_number - b.page_number)
-      const toc_source = info.toc?.length ? info.toc : sorted_pages.map(p => ({ page: p.page_number, text: `صفحة ${p.page_number}` }))
-      const toc_html = render_html_nav_items(toc_source)
-      const info_html = sanitize_html_for_xhtml(info.about ?? '')
-      const pages_html = sorted_pages.map(page => `<section id="p${page.page_number}" class="page_block">${page.text_html}</section>`).join('\n')
-      const html = `<!doctype html>
-<html lang="ar" dir="rtl">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>${escape_xml(title)}</title>
-    <style>
-${BASE_CSS}
-body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
-.top{margin-bottom:20px}
-.toc{margin:18px 0 24px;padding:12px 14px;border:1px solid #ddd;border-radius:12px;background:#fafafa}
-.toc h2{margin:0 0 10px}
-.toc ol{margin:0;padding:0 22px 0 0}
-.toc li{margin:6px 0}
-.toc a{text-decoration:none}
-.toc a:hover{text-decoration:underline}
-.content{display:grid;gap:14px}
-.page_block{padding:14px 12px;border:1px solid #eee;border-radius:12px;background:#fff}
-    </style>
-  </head>
-  <body>
-    <section class="top">${info_html}</section>
-    <nav class="toc">
-      <h2>فهرس الموضوعات</h2>
-      ${toc_html || '<ol><li>لا يوجد فهرس</li></ol>'}
-    </nav>
-    <main class="content">${pages_html}</main>
-  </body>
-</html>
+      const blocks = sorted_pages.map(page => {
+        const cleaned = clean_html_fragment(page.text_html)
+        return `<p data-page="${page.page_number}">[[PAGE_BREAK:${page.page_number}]]</p>
+${cleaned}`.trim()
+      }).join('\n')
+      const html = `<html lang="ar" dir="rtl"><body>
+${blocks}
+</body></html>
 `
-
       const blob = new Blob([html], { type: 'text/html;charset=utf-8' })
-      return { blob, filename }
+      const meta = build_meta_payload(info)
+      return { blob, filename, meta, folder_name: sanitize_filename(meta.id || title) }
     }
 
     const build_epub = async (info, pages) => {
@@ -2149,7 +2169,7 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
       els.sum_title.textContent = title || '-'
       els.sum_author.textContent = author || '-'
 
-      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل EPUB (+PDF/+HTML اختياري)".')
+      if (!skip_success_message) show_ok('تم التحليل. راجع الاختيارات ثم اضغط "تحويل وتنزيل HTML (+EPUB/+PDF اختياري)".')
       set_status('جاهز للتحويل')
       if (enable_convert) els.convert_btn.disabled = false
     }
@@ -2165,14 +2185,14 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
 ${author ? `<p>المؤلف: ${escape_xml(author)}</p>` : ''}
 ${card_html}
 </div>`
-      const info = { id: 0, title, author, about, toc }
+      const info = { id: 0, title, author, about, toc, card }
       return { info, pages }
     }
 
-    const convert_current_mdb_outputs = async (fallback_name, { include_pdf = false, include_html = false, pdf_mode = 'blob' } = {}) => {
+    const convert_current_mdb_outputs = async (fallback_name, { include_pdf = false, include_epub = false, pdf_mode = 'blob' } = {}) => {
       const { info, pages } = await build_current_book_payload(fallback_name)
-      set_status('بناء EPUB...')
-      const epub = await build_epub(info, pages)
+      set_status('بناء HTML...')
+      const html = await build_clean_html(info, pages)
       let pdf = null
       let pdf_error = ''
       if (include_pdf) {
@@ -2185,18 +2205,18 @@ ${card_html}
           log(`ERR: PDF build failed: ${pdf_error}`)
         }
       }
-      let html = null
-      let html_error = ''
-      if (include_html) {
+      let epub = null
+      let epub_error = ''
+      if (include_epub) {
         try {
-          set_status('بناء HTML...')
-          html = await build_html(info, pages)
+          set_status('بناء EPUB...')
+          epub = await build_epub(info, pages)
         } catch (e) {
-          html_error = String(e?.message ?? e)
-          log(`ERR: HTML build failed: ${html_error}`)
+          epub_error = String(e?.message ?? e)
+          log(`ERR: EPUB build failed: ${epub_error}`)
         }
       }
-      return { epub, pdf, html, pdf_error, html_error }
+      return { html, epub, pdf, pdf_error, epub_error }
     }
 
     const load_book_by_index = async (index, { keep_current = true } = {}) => {
@@ -2527,16 +2547,18 @@ ${card_html}
     }
 
     const update_batch_btn_label = () => {
-      els.batch_convert_btn.textContent = els.download_each_mode.checked ? 'تحويل جماعي (تنزيل مباشر)' : 'تحويل جماعي (ZIP)'
+      els.batch_convert_btn.textContent = 'تحويل مجموعة HTML (ZIP)'
+      els.download_each_mode.checked = false
+      els.download_each_mode.disabled = true
     }
 
     const update_pdf_font_ui = () => {
       els.pdf_font.disabled = !els.include_pdf.checked
     }
 
-    const append_optional_output_counts = (summary, { include_pdf, pdf_success_count, include_html, html_success_count }) => {
+    const append_optional_output_counts = (summary, { include_pdf, pdf_success_count, include_epub, epub_success_count }) => {
       if (include_pdf) summary.push(`${pdf_success_count} ملف PDF`)
-      if (include_html) summary.push(`${html_success_count} ملف HTML`)
+      if (include_epub) summary.push(`${epub_success_count} ملف EPUB`)
       return summary
     }
 
@@ -2993,28 +3015,41 @@ ${card_html}
         set_status('تحويل...')
         const fallback_name = current_file?.name ?? els.bok_file.files?.[0]?.name ?? ''
         const include_pdf = !!els.include_pdf.checked
-        const include_html = !!els.include_html.checked
-        const { epub, pdf, html, pdf_error, html_error } = await convert_current_mdb_outputs(fallback_name, {
+        const include_epub = !!els.include_epub.checked
+        const { html, epub, pdf, pdf_error, epub_error } = await convert_current_mdb_outputs(fallback_name, {
           include_pdf,
-          include_html,
-          pdf_mode: include_pdf ? 'download' : 'blob',
+          include_epub,
+          pdf_mode: 'blob',
         })
-        download_blob(epub.blob, epub.filename)
-        if (include_pdf && pdf) download_pdf_doc(pdf, pdf.filename)
-        if (include_html && html) download_blob(html.blob, html.filename)
 
-        const outputs = [epub.filename]
-        if (include_pdf && pdf?.filename) outputs.push(pdf.filename)
-        if (include_html && html?.filename) outputs.push(html.filename)
+        const zip = new JSZip()
+        const folder = zip.folder(`html/${html.folder_name}`)
+        folder?.file(html.filename, html.blob)
+        folder?.file('meta.json', JSON.stringify(html.meta, null, 2))
+
+        const outputs = [`html/${html.folder_name}/${html.filename}`, `html/${html.folder_name}/meta.json`]
+        if (include_pdf && pdf?.blob) {
+          folder?.file(pdf.filename, pdf.blob)
+          outputs.push(`html/${html.folder_name}/${pdf.filename}`)
+        }
+        if (include_epub && epub?.blob) {
+          folder?.file(epub.filename, epub.blob)
+          outputs.push(`html/${html.folder_name}/${epub.filename}`)
+        }
+
+        const zip_blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/zip', compression: 'DEFLATE', compressionOptions: { level: 9 } })
+        const zip_name = sanitize_filename(`${html.folder_name}.zip`)
+        download_blob(zip_blob, zip_name)
+
         const errors = []
         if (include_pdf && pdf_error) errors.push(`PDF: ${pdf_error}`)
-        if (include_html && html_error) errors.push(`HTML: ${html_error}`)
+        if (include_epub && epub_error) errors.push(`EPUB: ${epub_error}`)
 
         if (errors.length) {
-          show_warn(`تم إنشاء ${outputs.join(' + ')} لكن حدث فشل: ${errors.join(' | ')}`)
+          show_warn(`تم إنشاء ${zip_name} لكن حدث فشل: ${errors.join(' | ')}`)
           set_status('تم جزئيًا')
         } else {
-          show_ok(outputs.length > 1 ? `تم إنشاء الملفات: ${outputs.join(' + ')}` : `تم إنشاء الملف: ${epub.filename}`)
+          show_ok(`تم إنشاء الحزمة: ${zip_name} (${outputs.join(' + ')})`)
           set_status('تم')
         }
       } catch (e) {
@@ -3046,32 +3081,21 @@ ${card_html}
         selection: null,
       }))
 
-      const download_each = !!els.download_each_mode.checked
       const include_pdf = !!els.include_pdf.checked
-      const include_html = !!els.include_html.checked
-      const uniquify_name = (name, seen) => {
-        if (!seen.has(name)) return name
-        const dot = name.lastIndexOf('.')
-        const base = dot > 0 ? name.slice(0, dot) : name
-        const ext = dot > 0 ? name.slice(dot) : ''
-        let i = 2
-        while (seen.has(`${base} (${i})${ext}`)) i += 1
-        return `${base} (${i})${ext}`
-      }
+      const include_epub = !!els.include_epub.checked
 
       try {
         disable_primary_actions()
         reset_log()
-        set_status(download_each ? 'تحويل دفعي (تنزيل مباشر)...' : 'تحويل دفعي...')
+        set_status('تحويل HTML دفعي...')
 
         await load_libs()
-        const used_names = new Set()
-        const batch_zip = download_each ? null : new JSZip()
+        const batch_zip = new JSZip()
         let success_count = 0
         let pdf_success_count = 0
         let pdf_error_count = 0
-        let html_success_count = 0
-        let html_error_count = 0
+        let epub_success_count = 0
+        let epub_error_count = 0
 
         for (let i = 0; i < items.length; i += 1) {
           const item = items[i]
@@ -3085,40 +3109,33 @@ ${card_html}
           try {
             await analyze_file(file, { skip_success_message: true, enable_convert: false })
             if (item.selection) apply_book_selection(item.selection)
-            const { epub, pdf, html, pdf_error, html_error } = await convert_current_mdb_outputs(file.name, {
+            const { html, epub, pdf, pdf_error, epub_error } = await convert_current_mdb_outputs(file.name, {
               include_pdf,
-              include_html,
-              pdf_mode: download_each ? 'download' : 'blob',
+              include_epub,
+              pdf_mode: 'blob',
             })
-            const epub_name = uniquify_name(epub.filename, used_names)
-            used_names.add(epub_name)
 
-            if (download_each) download_blob(epub.blob, epub_name)
-            else batch_zip.file(epub_name, epub.blob)
-            log(`OK: ${epub_name}`)
+            const folder = batch_zip.folder(`html/${html.folder_name}`)
+            folder?.file(html.filename, html.blob)
+            folder?.file('meta.json', JSON.stringify(html.meta, null, 2))
+            log(`OK: html/${html.folder_name}/${html.filename}`)
 
-            if (include_pdf && pdf) {
-              const pdf_name = uniquify_name(pdf.filename, used_names)
-              used_names.add(pdf_name)
-              if (download_each) download_pdf_doc(pdf, pdf_name)
-              else batch_zip.file(pdf_name, pdf.blob)
+            if (include_pdf && pdf?.blob) {
+              folder?.file(pdf.filename, pdf.blob)
               pdf_success_count += 1
-              log(`OK: ${pdf_name}`)
+              log(`OK: html/${html.folder_name}/${pdf.filename}`)
             } else if (include_pdf && pdf_error) {
               pdf_error_count += 1
               log(`ERR: PDF ${file.name} -> ${pdf_error}`)
             }
 
-            if (include_html && html) {
-              const html_name = uniquify_name(html.filename, used_names)
-              used_names.add(html_name)
-              if (download_each) download_blob(html.blob, html_name)
-              else batch_zip.file(html_name, html.blob)
-              html_success_count += 1
-              log(`OK: ${html_name}`)
-            } else if (include_html && html_error) {
-              html_error_count += 1
-              log(`ERR: HTML ${file.name} -> ${html_error}`)
+            if (include_epub && epub?.blob) {
+              folder?.file(epub.filename, epub.blob)
+              epub_success_count += 1
+              log(`OK: html/${html.folder_name}/${epub.filename}`)
+            } else if (include_epub && epub_error) {
+              epub_error_count += 1
+              log(`ERR: EPUB ${file.name} -> ${epub_error}`)
             }
 
             if (use_preflight) active_book_index = i
@@ -3129,39 +3146,27 @@ ${card_html}
         }
 
         if (!success_count) throw new Error('فشل تحويل جميع الملفات')
-        const has_partial = (include_pdf && pdf_error_count) || (include_html && html_error_count)
+        const has_partial = (include_pdf && pdf_error_count) || (include_epub && epub_error_count)
 
-        if (download_each) {
-          const summary = append_optional_output_counts([`تم تنزيل ${success_count} ملف EPUB مباشرة`], {
-            include_pdf,
-            pdf_success_count,
-            include_html,
-            html_success_count,
-          })
-          show_ok(summary.join(' و '))
-          if (has_partial) set_status('تم جزئيًا')
-          else set_status('تم')
-        } else {
-          const ts = new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)
-          const zip_name = sanitize_filename(`bok-to-epub-batch-${ts}.zip`)
-          set_status('بناء ZIP...')
-          const zip_blob = await batch_zip.generateAsync({
-            type: 'blob',
-            mimeType: 'application/zip',
-            compression: 'DEFLATE',
-            compressionOptions: { level: 9 },
-          })
-          download_blob(zip_blob, zip_name)
-          const summary = append_optional_output_counts([`تم تحويل ${success_count} ملف EPUB`], {
-            include_pdf,
-            pdf_success_count,
-            include_html,
-            html_success_count,
-          })
-          show_ok(`${summary.join(' و ')} وتنزيل ${zip_name}`)
-          if (has_partial) set_status('تم جزئيًا')
-          else set_status('تم')
-        }
+        const ts = new Date().toISOString().replace(/[:]/g, '-').slice(0, 19)
+        const zip_name = sanitize_filename(`bok-to-html-batch-${ts}.zip`)
+        set_status('بناء ZIP...')
+        const zip_blob = await batch_zip.generateAsync({
+          type: 'blob',
+          mimeType: 'application/zip',
+          compression: 'DEFLATE',
+          compressionOptions: { level: 9 },
+        })
+        download_blob(zip_blob, zip_name)
+        const summary = append_optional_output_counts([`تم تحويل ${success_count} ملف HTML`], {
+          include_pdf,
+          pdf_success_count,
+          include_epub,
+          epub_success_count,
+        })
+        show_ok(`${summary.join(' و ')} وتنزيل ${zip_name}`)
+        if (has_partial) set_status('تم جزئيًا')
+        else set_status('تم')
       } catch (e) {
         show_warn(`فشل التحويل الدفعي: ${String(e?.message ?? e)}`)
         set_status('خطأ')
