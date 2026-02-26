@@ -1093,6 +1093,13 @@
     }
 
     const is_heading_text = text => /^(?:تفسير\s+سورة|سورة)\s+/.test(text)
+    const heading_tag_for_level = level => `h${Math.min(4, Math.max(2, (Number(level) || 1) + 1))}`
+    const normalize_match_text = text => String(text ?? '').replace(/\s+/g, ' ').trim()
+    const plain_text_from_html = html => normalize_match_text(String(html ?? '').replace(/<[^>]+>/g, ' '))
+    const first_heading_text_from_html = html => {
+      const m = String(html ?? '').trim().match(/^<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i)
+      return m ? plain_text_from_html(m[1]) : ''
+    }
 
     const download_blob = (blob, filename) => {
       const url = URL.createObjectURL(blob)
@@ -1899,9 +1906,17 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
       return { blob, filename }
     }
 
-    const html_to_pdf_text = text_html => {
+    const html_to_pdf_blocks = text_html => {
       const raw = String(text_html ?? '').replace(/\u0000/g, '').trim()
-      if (!raw) return ''
+      if (!raw) return []
+      const normalize_block_text = text =>
+        String(text ?? '')
+          .replace(/\u00a0/g, ' ')
+          .replace(/\r/g, '')
+          .replace(/[ \t\f\v]+/g, ' ')
+          .replace(/ *\n+ */g, '\n')
+          .replace(/\n{3,}/g, '\n\n')
+          .trim()
 
       const container = document.createElement('div')
       container.innerHTML = raw
@@ -1909,11 +1924,38 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
         .replace(/<\/(p|div|li|h1|h2|h3|h4|h5|h6|blockquote)>/gi, '\n')
       container.querySelectorAll('script,style').forEach(node => node.remove())
 
-      return (container.textContent ?? '')
-        .split(/\n+/)
-        .map(line => line.replace(/\s+/g, ' ').trim())
-        .filter(Boolean)
-        .join('\n\n')
+      const blocks = []
+      const walk = node => {
+        if (!node) return
+        if (node.nodeType === Node.TEXT_NODE) {
+          const text = normalize_block_text(node.textContent ?? '')
+          if (text) blocks.push({ text, style: 'paragraph' })
+          return
+        }
+        if (node.nodeType !== Node.ELEMENT_NODE) return
+        const tag = String(node.tagName ?? '').toLowerCase()
+        const text = normalize_block_text(node.textContent ?? '')
+        if (!text) return
+        if (/^h[1-6]$/.test(tag)) {
+          blocks.push({ text, style: 'section_heading' })
+          return
+        }
+        const has_block_children = !!node.querySelector?.('p,div,li,blockquote,h1,h2,h3,h4,h5,h6')
+        if (has_block_children) {
+          Array.from(node.childNodes ?? []).forEach(walk)
+          return
+        }
+        if (/^(p|div|li|blockquote)$/.test(tag)) {
+          blocks.push({ text, style: 'paragraph' })
+          return
+        }
+        Array.from(node.childNodes ?? []).forEach(walk)
+      }
+
+      Array.from(container.childNodes ?? []).forEach(walk)
+      if (blocks.length) return blocks
+      const fallback = normalize_block_text(container.textContent ?? '')
+      return fallback ? [{ text: fallback, style: 'paragraph' }] : []
     }
 
     const compact_pdf_text = text =>
@@ -1959,11 +2001,11 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
         const key = has_source_page ? `${entry.part ?? ''}|${entry.page}` : `generated_${entry.page_number}`
         let group = source_groups[source_groups.length - 1]
         if (!group || group.key !== key) {
-          group = { key, part: entry.part, page: entry.page, texts: [] }
+          group = { key, part: entry.part, page: entry.page, blocks: [] }
           source_groups.push(group)
         }
-        const text = html_to_pdf_text(entry.text_html)
-        if (text) group.texts.push(text)
+        const blocks = html_to_pdf_blocks(entry.text_html)
+        if (blocks.length) group.blocks.push(...blocks)
         if (i % 25 === 0) {
           set_status(`بناء PDF... (${Math.min(i + 1, total_pages)}/${total_pages})`)
           await new Promise(r => setTimeout(r, 0))
@@ -1983,8 +2025,14 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
           group.page ? `الصفحة: ${group.page}` : null,
         ].filter(Boolean).join(' - ')
         if (meta) content.push({ text: meta, style: 'page_meta' })
-        const page_text = group.texts.length ? compact_pdf_text(group.texts.join('\n')) : ' '
-        content.push({ text: page_text, style: 'paragraph' })
+        if (group.blocks.length) {
+          group.blocks.forEach(block => {
+            const text = compact_pdf_text(block.text)
+            if (text) content.push({ text, style: block.style })
+          })
+        } else {
+          content.push({ text: ' ', style: 'paragraph' })
+        }
         if (idx < source_groups.length - 1) content.push({ text: '', pageBreak: 'after' })
       })
 
@@ -2008,6 +2056,7 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
           title: { fontSize: 20, bold: true, alignment: 'center', margin: [0, 0, 0, 10] },
           author: { fontSize: 13, alignment: 'center', margin: [0, 0, 0, 12] },
           page_meta: { fontSize: 10, color: '#4b5563', margin: [0, 0, 0, 8] },
+          section_heading: { fontSize: 15, bold: true, margin: [0, 4, 0, 4] },
           paragraph: { margin: [0, 0, 0, 2] },
         },
         content,
@@ -2107,8 +2156,7 @@ body{max-width:980px;margin:0 auto;padding:24px 18px;background:#fff}
 
     const build_current_book_payload = async fallback_name => {
       const raw_toc = parse_raw_toc()
-      const toc_starts = raw_toc?.map(t => t.start) ?? null
-      const { pages, id_to_page_number, id_to_snippet } = await parse_pages(toc_starts)
+      const { pages, id_to_page_number, id_to_snippet } = await parse_pages(raw_toc)
       const toc = map_toc(raw_toc, id_to_page_number, id_to_snippet) ?? auto_toc_from_pages(pages)
       const { title, author, card } = extract_title_author(fallback_name)
       const card_html = card ? sanitize_html_for_xhtml(to_html_paragraphs(card).join('')) : ''
@@ -2224,10 +2272,17 @@ ${card_html}
       return items.length ? items : null
     }
 
-    const create_pages_reader = (toc_starts = null, { log_batches = true } = {}) => {
+    const create_pages_reader = (toc_items = null, { log_batches = true } = {}) => {
       const content_table = els.content_table.value
       const text_col = els.content_text_col.value
       if (!content_table || !text_col) throw new Error('حدد جدول المحتوى وعمود النص')
+      const toc_starts = toc_items?.map(t => t.start) ?? null
+      const toc_by_start = new Map()
+      ;(toc_items ?? []).forEach(item => {
+        const start = item?.start
+        if (start == null || toc_by_start.has(start)) return
+        toc_by_start.set(start, item)
+      })
 
       let id_col = els.content_id_col.value || null
       const page_col = els.content_page_col.value || null
@@ -2329,7 +2384,7 @@ ${card_html}
                 }
               }
               if (current.length) chunks.push(current)
-              chunks = chunks.map(list => list.map(p => `<p>${escape_xml(p)}</p>`))
+              chunks = chunks.map(list => list.map((p, idx) => (idx === 0 && is_heading_text(p) ? `<h3>${escape_xml(p)}</h3>` : `<p>${escape_xml(p)}</p>`)))
               if (!chunks.length) continue
             }
 
@@ -2342,9 +2397,38 @@ ${card_html}
               if (idx >= 0) anchor_chunk_index = idx
             }
 
-            chunks.forEach((paras, chunk_index) => {
+            chunks.forEach((chunk_blocks, chunk_index) => {
               const out = []
-              if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) out.push(`<a id="toc_${idv}"></a>`)
+              const paras = [...chunk_blocks]
+              if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) {
+                const toc_entry = toc_by_start.get(idv)
+                const first = paras[0] ?? ''
+                const first_text = normalize_match_text(plain_text_from_html(first))
+                const first_heading_text = first_heading_text_from_html(first)
+                const heading_text = normalize_match_text(String(toc_entry?.text ?? '').trim())
+                const heading_tag = heading_tag_for_level(toc_entry?.level)
+                if (heading_text && first_heading_text === heading_text) {
+                  paras[0] = first
+                    .replace(/^<h[1-6]\b[^>]*>/i, `<${heading_tag} id="toc_${idv}">`)
+                    .replace(/<\/h[1-6]>/i, `</${heading_tag}>`)
+                } else if (heading_text && first_text === heading_text && /^<p\b/i.test(first)) {
+                  paras[0] = `<${heading_tag} id="toc_${idv}">${escape_xml(heading_text)}</${heading_tag}>`
+                } else if (heading_text && first_text === heading_text && /^<h[1-6]\b/i.test(first)) {
+                  paras[0] = first
+                    .replace(/^<h[1-6]\b[^>]*>/i, `<${heading_tag} id="toc_${idv}">`)
+                    .replace(/<\/h[1-6]>/i, `</${heading_tag}>`)
+                } else if (heading_text) {
+                  out.push(`<${heading_tag} id="toc_${idv}">${escape_xml(heading_text)}</${heading_tag}>`)
+                } else if (first_text && /^<p\b/i.test(first) && is_heading_text(first_text)) {
+                  paras[0] = `<h3 id="toc_${idv}">${escape_xml(first_text)}</h3>`
+                } else if (/^<h[1-6]\b/i.test(first)) {
+                  paras[0] = first
+                    .replace(/^<h[1-6]\b[^>]*>/i, `<h3 id="toc_${idv}">`)
+                    .replace(/<\/h[1-6]>/i, '</h3>')
+                } else {
+                  out.push(`<a id="toc_${idv}"></a>`)
+                }
+              }
               out.push(...paras)
               const body = `<div>${out.join('')}</div>`
               const text_html = footer ? `${body}<div class="text-center">${footer}</div>` : body
@@ -2383,9 +2467,9 @@ ${card_html}
       return { pages, id_to_page_number, id_to_snippet, page_value_to_page_number, has_id_col, has_page_col, load_more, progress }
     }
 
-    const parse_pages = async (toc_starts = null) => {
+    const parse_pages = async (toc_items = null) => {
       set_status('قراءة المحتوى...')
-      const reader = create_pages_reader(toc_starts, { log_batches: true })
+      const reader = create_pages_reader(toc_items, { log_batches: true })
       await reader.load_more({ max_pages: Number.POSITIVE_INFINITY })
       log(`Pages built: ${reader.pages.length}`)
       els.sum_pages.textContent = String(reader.pages.length)
@@ -2396,7 +2480,7 @@ ${card_html}
       const items = []
       const seen = new Set()
       const first_para = html => {
-        const m = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i)
+        const m = html.match(/<(?:h[1-6]|p)[^>]*>([\s\S]*?)<\/(?:h[1-6]|p)>/i)
         if (!m) return ''
         return m[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
       }
@@ -2640,8 +2724,7 @@ ${card_html}
 
         const raw_toc = parse_raw_toc()
         preview_toc_tree = nest_by_level(raw_toc ?? [], it => ({ text: it.text, start: it.start }))
-        const toc_starts = raw_toc?.map(t => t.start) ?? null
-        preview_reader = create_pages_reader(toc_starts, { log_batches: false })
+        preview_reader = create_pages_reader(raw_toc, { log_batches: false })
 
         const { title, author } = extract_title_author(current_file?.name ?? '')
         els.preview_title.textContent = `${title}${author ? ` - ${author}` : ''}`
