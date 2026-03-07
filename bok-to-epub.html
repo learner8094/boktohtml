@@ -1600,7 +1600,7 @@
       if (start_guess && num_like_cols.includes(start_guess)) els.toc_start_col.value = start_guess
       if (level_guess && num_like_cols.includes(level_guess)) els.toc_level_col.value = level_guess
 
-      if (!content_id_col_locked && els.content_table.value) {
+      if (!content_id_col_locked && !els.content_id_col.value && els.content_table.value) {
         const content_name = els.content_table.value
         const content_meta = table_meta.get(content_name) ?? { column_names: [] }
         const content_preview = read_table_preview(content_name, 80)
@@ -2395,7 +2395,7 @@ ${card_html}
       const table = mdb.getTable(content_table)
       const row_count = table.rowCount
 
-      if (toc_starts?.length && !content_id_col_locked) {
+      if (toc_starts?.length && !content_id_col_locked && !id_col) {
         const cols = table_meta.get(content_table)?.column_names ?? []
         const toc_start_col = els.toc_start_col.value || ''
         const excluded = c => !c || c === text_col || c === page_col || c === part_col
