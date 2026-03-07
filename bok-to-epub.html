@@ -708,6 +708,20 @@
           <div style="height:10px"></div>
 
           <div class="row">
+            <button id="show_toc_preview_btn" type="button">عرض معاينة جدول الفهرس</button>
+            <div class="small" id="toc_preview_status" aria-live="polite">-</div>
+          </div>
+
+          <div style="height:8px"></div>
+
+          <label class="small">
+            معاينة جدول الفهرس (أول 200 صف)
+            <textarea id="toc_preview_dump" readonly placeholder="اختر جدول الفهرس ثم اضغط زر المعاينة"></textarea>
+          </label>
+
+          <div style="height:10px"></div>
+
+          <div class="row">
             <label>
               عمود المستوى (اختياري)
               <select id="toc_level_col"></select>
@@ -873,6 +887,9 @@
       toc_text_col: $('#toc_text_col'),
       toc_start_col: $('#toc_start_col'),
       toc_level_col: $('#toc_level_col'),
+      show_toc_preview_btn: $('#show_toc_preview_btn'),
+      toc_preview_status: $('#toc_preview_status'),
+      toc_preview_dump: $('#toc_preview_dump'),
       override_title: $('#override_title'),
       override_author: $('#override_author'),
       chunk_size: $('#chunk_size'),
@@ -1556,6 +1573,8 @@
         set_select_options(els.toc_text_col, [])
         set_select_options(els.toc_start_col, [])
         set_select_options(els.toc_level_col, [])
+        els.toc_preview_status.textContent = 'اختر جدول فهرس'
+        els.toc_preview_dump.value = ''
         return
       }
       const meta = table_meta.get(name) ?? { column_names: [] }
@@ -1590,6 +1609,44 @@
         const id_guess = pick_id_column(content_preview, content_cols, content_num_like_cols)
         if (id_guess && has_option(els.content_id_col, id_guess)) els.content_id_col.value = id_guess
       }
+    }
+
+    const update_toc_table_preview = () => {
+      const toc_table = els.toc_table.value
+      if (!toc_table) {
+        els.toc_preview_status.textContent = 'لم يتم اختيار جدول'
+        els.toc_preview_dump.value = ''
+        return
+      }
+
+      const toc_text_col = els.toc_text_col.value
+      const toc_start_col = els.toc_start_col.value
+      const toc_level_col = els.toc_level_col.value || ''
+      const preview_rows = read_table_preview(toc_table, 200)
+
+      if (!preview_rows.length) {
+        els.toc_preview_status.textContent = `الجدول ${toc_table} فارغ`
+        els.toc_preview_dump.value = ''
+        return
+      }
+
+      const lines = preview_rows.map((row, idx) => {
+        const text = toc_text_col ? decode_value(row?.[toc_text_col]).trim() : ''
+        const start = toc_start_col ? row?.[toc_start_col] ?? '' : ''
+        const level = toc_level_col ? row?.[toc_level_col] ?? '' : ''
+        const cols = [
+          `#${idx + 1}`,
+          toc_text_col ? `${toc_text_col}="${text}"` : 'بدون عمود عنوان',
+          toc_start_col ? `${toc_start_col}=${start}` : 'بدون عمود بداية',
+          toc_level_col ? `${toc_level_col}=${level}` : null,
+        ].filter(Boolean)
+        return cols.join(' | ')
+      })
+
+      els.toc_preview_dump.value = lines.join('\n')
+      const has_required_cols = toc_text_col && toc_start_col
+      const msg_prefix = has_required_cols ? 'معاينة جاهزة' : 'تنبيه: اختر عمودي العنوان والبداية'
+      els.toc_preview_status.textContent = `${msg_prefix} — ${toc_table} (${preview_rows.length} صف)`
     }
 
     const get_meta_guess = () => {
@@ -2168,6 +2225,7 @@ ${blocks}
 
       update_content_columns_ui()
       update_toc_columns_ui()
+      update_toc_table_preview()
 
       const ct = els.content_table.value
       const ct_meta = table_meta.get(ct)
@@ -2816,6 +2874,7 @@ ${card_html}
     })
     els.toc_table.addEventListener('change', () => {
       update_toc_columns_ui()
+      update_toc_table_preview()
       persist_active_book_selection()
     })
 
@@ -2829,8 +2888,14 @@ ${card_html}
         els.chunk_size,
         els.split_numbered,
       ].forEach(control => {
-        control.addEventListener('change', persist_active_book_selection)
+        control.addEventListener('change', () => {
+          if (control === els.toc_text_col || control === els.toc_start_col || control === els.toc_level_col) {
+            update_toc_table_preview()
+          }
+          persist_active_book_selection()
+        })
       })
+    els.show_toc_preview_btn.addEventListener('click', update_toc_table_preview)
     els.content_id_col.addEventListener('change', () => {
       content_id_col_locked = true
       persist_active_book_selection()
