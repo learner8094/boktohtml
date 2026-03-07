@@ -1111,10 +1111,18 @@
       return parts.map(p => `<p>${escape_xml(p)}</p>`)
     }
 
-    const is_heading_text = text => /^(?:تفسير\s+سورة|سورة)\s+/.test(text)
+    const is_issue_heading_text = text => /^المسألة\s+[\p{L}\p{N}\u0660-\u0669\u06F0-\u06F9\s-]{1,40}(?::|$)/u.test(String(text ?? '').trim())
+    const is_heading_text = text => /^(?:تفسير\s+سورة|سورة)\s+/.test(text) || is_issue_heading_text(text)
     const heading_tag_for_level = level => `h${Math.min(4, Math.max(2, (Number(level) || 1) + 1))}`
     const normalize_match_text = text => String(text ?? '').replace(/\s+/g, ' ').trim()
     const plain_text_from_html = html => normalize_match_text(String(html ?? '').replace(/<[^>]+>/g, ' '))
+    const promote_heading_paragraph = html => {
+      const match = String(html ?? '').trim().match(/^<p\b[^>]*>([\s\S]*?)<\/p>$/i)
+      if (!match) return html
+      const paragraph_text = normalize_match_text(plain_text_from_html(match[1]))
+      if (!is_heading_text(paragraph_text)) return html
+      return `<h3>${match[1]}</h3>`
+    }
     const first_heading_text_from_html = html => {
       const m = String(html ?? '').trim().match(/^<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i)
       return m ? plain_text_from_html(m[1]) : ''
@@ -2497,7 +2505,7 @@ ${card_html}
 
             chunks.forEach((chunk_blocks, chunk_index) => {
               const out = []
-              const paras = [...chunk_blocks]
+              const paras = chunk_blocks.map(promote_heading_paragraph)
               if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) {
                 const toc_entry = toc_by_start.get(idv)
                 const first = paras[0] ?? ''
