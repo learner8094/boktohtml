@@ -2382,8 +2382,9 @@ ${card_html}
       const toc_by_start = new Map()
       ;(toc_items ?? []).forEach(item => {
         const start = item?.start
-        if (start == null || toc_by_start.has(start)) return
-        toc_by_start.set(start, item)
+        if (start == null) return
+        if (!toc_by_start.has(start)) toc_by_start.set(start, [])
+        toc_by_start.get(start).push(item)
       })
 
       let id_col = els.content_id_col.value || null
@@ -2499,7 +2500,8 @@ ${card_html}
               const out = []
               const paras = [...chunk_blocks]
               if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) {
-                const toc_entry = toc_by_start.get(idv)
+                const toc_entries = toc_by_start.get(idv) ?? []
+                const toc_entry = toc_entries[0] ?? null
                 const first = paras[0] ?? ''
                 const first_text = normalize_match_text(plain_text_from_html(first))
                 const first_heading_text = first_heading_text_from_html(first)
@@ -2525,6 +2527,15 @@ ${card_html}
                     .replace(/<\/h[1-6]>/i, '</h3>')
                 } else {
                   out.push(`<a id="toc_${idv}"></a>`)
+                }
+
+                if (toc_entries.length > 1) {
+                  toc_entries.slice(1).forEach((entry, extra_index) => {
+                    const extra_text = normalize_match_text(String(entry?.text ?? '').trim())
+                    if (!extra_text) return
+                    const extra_tag = heading_tag_for_level(entry?.level)
+                    out.push(`<${extra_tag} id="toc_${idv}_${extra_index + 2}">${escape_xml(extra_text)}</${extra_tag}>`)
+                  })
                 }
               }
               out.push(...paras)
@@ -2599,6 +2610,7 @@ ${card_html}
       if (!raw_toc?.length) return null
       const items = []
       const seen = new Set()
+      const start_counts = new Map()
       for (const entry of raw_toc) {
         const page_number = id_to_page_number.get(entry.start) ?? (entry.start === 0 ? 1 : null)
         if (typeof page_number !== 'number' || !page_number) continue
@@ -2612,7 +2624,10 @@ ${card_html}
         const key = `${page_number}|${entry.level ?? ''}|${text}`
         if (seen.has(key)) continue
         seen.add(key)
-        items.push({ text, page: page_number, anchor: entry.start === 0 ? '' : `toc_${entry.start}`, level: entry.level })
+        const idx = (start_counts.get(entry.start) ?? 0) + 1
+        start_counts.set(entry.start, idx)
+        const anchor = entry.start === 0 ? '' : idx === 1 ? `toc_${entry.start}` : `toc_${entry.start}_${idx}`
+        items.push({ text, page: page_number, anchor, level: entry.level })
       }
       if (!items.length) return null
 
