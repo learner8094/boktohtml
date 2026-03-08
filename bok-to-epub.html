@@ -1119,6 +1119,10 @@
       const m = String(html ?? '').trim().match(/^<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/i)
       return m ? plain_text_from_html(m[1]) : ''
     }
+    const short_debug_text = (text, max = 90) => {
+      const value = String(text ?? '').replace(/\s+/g, ' ').trim()
+      return value.length <= max ? value : `${value.slice(0, max)}…`
+    }
 
     const download_blob = (blob, filename) => {
       const url = URL.createObjectURL(blob)
@@ -2426,6 +2430,7 @@ ${card_html}
       const id_to_page_number = new Map()
       const id_to_snippet = new Map()
       const page_value_to_page_number = new Map()
+      const anchored_starts = new Set()
 
       const starts = toc_starts ? new Set(toc_starts) : null
       const is_numbered = text => /^(?:[0-9\u0660-\u0669\u06F0-\u06F9]{1,4})\s*[-–—]\s+/.test(text)
@@ -2487,8 +2492,9 @@ ${card_html}
               if (!chunks.length) continue
             }
 
+            const should_anchor_start = starts && idv != null && starts.has(idv) && !anchored_starts.has(idv)
             let anchor_chunk_index = 0
-            if (starts && idv != null && starts.has(idv)) {
+            if (should_anchor_start) {
               const idx = chunks.findIndex(c => {
                 const first = c?.[0]?.replace(/<[^>]+>/g, '').trim() ?? ''
                 return is_heading_text(first)
@@ -2499,7 +2505,7 @@ ${card_html}
             chunks.forEach((chunk_blocks, chunk_index) => {
               const out = []
               const paras = [...chunk_blocks]
-              if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) {
+              if (should_anchor_start && chunk_index === anchor_chunk_index) {
                 const toc_entries = toc_by_start.get(idv) ?? []
                 const toc_entry = toc_entries[0] ?? null
                 const first = paras[0] ?? ''
@@ -2507,27 +2513,50 @@ ${card_html}
                 const first_heading_text = first_heading_text_from_html(first)
                 const heading_text = normalize_match_text(String(toc_entry?.text ?? '').trim())
                 const heading_tag = heading_tag_for_level(toc_entry?.level)
+                let anchor_action = 'none'
                 if (heading_text && first_heading_text === heading_text) {
                   paras[0] = first
                     .replace(/^<h[1-6]\b[^>]*>/i, `<${heading_tag} id="toc_${idv}">`)
                     .replace(/<\/h[1-6]>/i, `</${heading_tag}>`)
+                  anchor_action = 'reuse_existing_heading'
                 } else if (heading_text && first_text === heading_text && /^<p\b/i.test(first)) {
                   paras[0] = `<${heading_tag} id="toc_${idv}">${escape_xml(heading_text)}</${heading_tag}>`
+                  anchor_action = 'promote_first_paragraph_to_heading'
                 } else if (heading_text && first_text === heading_text && /^<h[1-6]\b/i.test(first)) {
                   paras[0] = first
                     .replace(/^<h[1-6]\b[^>]*>/i, `<${heading_tag} id="toc_${idv}">`)
                     .replace(/<\/h[1-6]>/i, `</${heading_tag}>`)
+                  anchor_action = 'retag_first_heading'
                 } else if (heading_text) {
                   out.push(`<${heading_tag} id="toc_${idv}">${escape_xml(heading_text)}</${heading_tag}>`)
+                  anchor_action = 'prepend_toc_heading'
                 } else if (first_text && /^<p\b/i.test(first) && is_heading_text(first_text)) {
                   paras[0] = `<h3 id="toc_${idv}">${escape_xml(first_text)}</h3>`
+                  anchor_action = 'promote_detected_heading'
                 } else if (/^<h[1-6]\b/i.test(first)) {
                   paras[0] = first
                     .replace(/^<h[1-6]\b[^>]*>/i, `<h3 id="toc_${idv}">`)
                     .replace(/<\/h[1-6]>/i, '</h3>')
+                  anchor_action = 'retag_detected_heading'
                 } else {
                   out.push(`<a id="toc_${idv}"></a>`)
+                  anchor_action = 'anchor_only'
                 }
+
+                if (heading_text || toc_entries.length > 1) {
+                  const extra_titles = toc_entries.slice(1)
+                    .map(entry => normalize_match_text(String(entry?.text ?? '').trim()))
+                    .filter(Boolean)
+                  const duplicate_candidates = extra_titles.filter(t => t === heading_text)
+                  const likely_duplicate = !!heading_text && (anchor_action === 'prepend_toc_heading' || duplicate_candidates.length > 0)
+                  const level_hint = toc_entry?.level == null ? '-' : toc_entry.level
+                  const first_tag = (first.match(/^<([a-z0-9]+)/i)?.[1] || 'none').toLowerCase()
+                  log(
+                    `[TOC debug] id=${idv} action=${anchor_action} level=${level_hint} first_tag=${first_tag} heading="${short_debug_text(heading_text)}" first="${short_debug_text(first_text)}" extras=${extra_titles.length}${likely_duplicate ? ' ⚠️ احتمال تكرار عنوان' : ''}`
+                  )
+                }
+
+                anchored_starts.add(idv)
 
                 if (toc_entries.length > 1) {
                   toc_entries.slice(1).forEach((entry, extra_index) => {
@@ -2544,7 +2573,7 @@ ${card_html}
               const page_number = pages.length + 1
               pages.push({ page_number, page: pv ?? 0, part: partv, text_html: sanitize_html_for_xhtml(text_html) })
 
-              if (idv != null && (!starts || !starts.has(idv) || chunk_index === anchor_chunk_index)) id_to_page_number.set(idv, page_number)
+              if (idv != null && !id_to_page_number.has(idv)) id_to_page_number.set(idv, page_number)
               if (pv != null && pv > 0 && !page_value_to_page_number.has(pv)) page_value_to_page_number.set(pv, page_number)
             })
 
