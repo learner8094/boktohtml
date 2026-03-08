@@ -2430,6 +2430,7 @@ ${card_html}
       const id_to_page_number = new Map()
       const id_to_snippet = new Map()
       const page_value_to_page_number = new Map()
+      const anchored_starts = new Set()
 
       const starts = toc_starts ? new Set(toc_starts) : null
       const is_numbered = text => /^(?:[0-9\u0660-\u0669\u06F0-\u06F9]{1,4})\s*[-–—]\s+/.test(text)
@@ -2491,8 +2492,9 @@ ${card_html}
               if (!chunks.length) continue
             }
 
+            const should_anchor_start = starts && idv != null && starts.has(idv) && !anchored_starts.has(idv)
             let anchor_chunk_index = 0
-            if (starts && idv != null && starts.has(idv)) {
+            if (should_anchor_start) {
               const idx = chunks.findIndex(c => {
                 const first = c?.[0]?.replace(/<[^>]+>/g, '').trim() ?? ''
                 return is_heading_text(first)
@@ -2503,7 +2505,7 @@ ${card_html}
             chunks.forEach((chunk_blocks, chunk_index) => {
               const out = []
               const paras = [...chunk_blocks]
-              if (starts && idv != null && starts.has(idv) && chunk_index === anchor_chunk_index) {
+              if (should_anchor_start && chunk_index === anchor_chunk_index) {
                 const toc_entries = toc_by_start.get(idv) ?? []
                 const toc_entry = toc_entries[0] ?? null
                 const first = paras[0] ?? ''
@@ -2554,6 +2556,8 @@ ${card_html}
                   )
                 }
 
+                anchored_starts.add(idv)
+
                 if (toc_entries.length > 1) {
                   toc_entries.slice(1).forEach((entry, extra_index) => {
                     const extra_text = normalize_match_text(String(entry?.text ?? '').trim())
@@ -2569,7 +2573,7 @@ ${card_html}
               const page_number = pages.length + 1
               pages.push({ page_number, page: pv ?? 0, part: partv, text_html: sanitize_html_for_xhtml(text_html) })
 
-              if (idv != null && (!starts || !starts.has(idv) || chunk_index === anchor_chunk_index)) id_to_page_number.set(idv, page_number)
+              if (idv != null && !id_to_page_number.has(idv)) id_to_page_number.set(idv, page_number)
               if (pv != null && pv > 0 && !page_value_to_page_number.has(pv)) page_value_to_page_number.set(pv, page_number)
             })
 
